@@ -61,8 +61,9 @@ module Instbuffer(
         end
 		//pop
         else if( issue_i == `Valid && issue_mode_i == `SingleIssue)begin//Issue one inst
-			FIFO_valid[head] <= `Invalid;
-            head <= head + 1;
+            FIFO_valid[head] <= `Invalid;
+			head <= head + 1;
+            
 		end
         else if( issue_i == `Valid && issue_mode_i == `DualIssue)begin//Issue two inst
 			FIFO_valid[head] <= `Invalid;
@@ -75,12 +76,12 @@ module Instbuffer(
         end
 		//push
         else if( ICache_inst1_valid_o == `Valid && ICache_inst2_valid_o == `Invalid)begin//ICache return one inst
-			FIFO_valid[tail] <= `Valid;
+			FIFO_valid[tail] <= (tail==head)? `Invalid:`Valid;
             tail <= tail + 1;
 		end
         else if( ICache_inst1_valid_o == `Valid && ICache_inst2_valid_o == `Valid)begin//ICache return two inst
-			FIFO_valid[tail] <= `Valid;
-			FIFO_valid[tail+`InstBufferSizeLog2'h1] <= `Valid;
+			FIFO_valid[tail] <= (tail==head)? `Invalid:`Valid;
+			FIFO_valid[tail+`InstBufferSizeLog2'h1] <= (tail==head)? `Invalid:`Valid;
             tail <= tail + 2;
 		end
     end
@@ -99,20 +100,31 @@ module Instbuffer(
 //////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////Output//////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
-	/*assign issue_inst1_o = FIFO_data[head];
-	assign issue_inst2_o = FIFO_data[head+`InstBufferSizeLog2'h1];
-	assign issue_inst1_addr_o = FIFO_addr[head];
-	assign issue_inst2_addr_o = FIFO_addr[head+`InstBufferSizeLog2'h1];*/
+  /* always@(posedge clk) begin
+	 issue_inst1_o <= FIFO_data[head];
+	 issue_inst2_o <= FIFO_data[head+`InstBufferSizeLog2'h1];
+	 issue_inst1_addr_o <= FIFO_addr[head];
+	 issue_inst2_addr_o <= FIFO_addr[head+`InstBufferSizeLog2'h1];
+	end
+	*/
+	reg [`InstBufferSizeLog2-1:0]head_o;//记录上一拍的head值，用于给inst_o赋值
+	always@(posedge clk) begin
+	   if(rst|flush)   head_o <= `InstBufferSizeLog2'h0;
+	   else if(issue_mode_i == `SingleIssue)    head_o <= head_o + 1; 
+	   else   head_o <= head;
+	end
 	
-	assign issue_inst1_o = FIFO_data[head-`InstBufferSizeLog2'h1];
-	assign issue_inst2_o = FIFO_data[head];
-	assign issue_inst1_addr_o = FIFO_addr[head-`InstBufferSizeLog2'h1];
-	assign issue_inst2_addr_o = FIFO_addr[head];
+	assign issue_inst1_o = FIFO_data[head_o];
+	assign issue_inst2_o = FIFO_data[head_o+`InstBufferSizeLog2'h1];
+	//assign issue_inst2_o = (issue_mode_i)? FIFO_data[head_o+`InstBufferSizeLog2'h1]:issue_inst2_o;
+	assign issue_inst1_addr_o = FIFO_addr[head_o];
+	assign issue_inst2_addr_o = FIFO_addr[head_o+`InstBufferSizeLog2'h1];
+	//assign issue_inst2_addr_o = (issue_mode_i)? FIFO_addr[head_o+`InstBufferSizeLog2'h1]:issue_inst2_addr_o;
 	
 	
     assign issue_bpu_corr1_o = FIFO_bpu_corr[head];
     assign issue_bpu_corr2_o = FIFO_bpu_corr[head+`InstBufferSizeLog2'h1];
-	assign issue_ok_o = FIFO_valid[head+`InstBufferSizeLog2'h2];
+	//assign issue_ok_o = FIFO_valid[head+`InstBufferSizeLog2'h2];
     //full
 	assign buffer_full_o = FIFO_valid[tail+`InstBufferSizeLog2'h5];
 

@@ -208,7 +208,7 @@ module id_top(
         
         );
            
-always @(*) begin
+always @(*) begin   //发射仲裁 使当前两条指令只发射第一条 清空第二条  那就意味着在instbuffer里面原来的第二条指令还需要保存下去直到下一个周期再发射出来
     if( issue_o == `SingleIssue)    begin
         id_aluop2_o = `EXE_NOP_OP;
         id_alusel2_o = `EXE_RES_NOP;
