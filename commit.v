@@ -26,7 +26,7 @@ module commit(
         input   rst,
         input   flush,
         input   flush_cause,
-        input[4:0]   stall,
+        input[3:0]   stall,
         
         //from mem
         input[`InstAddrBus] pc_i,

@@ -32,6 +32,10 @@ module ex_mem(
         input[`InstAddrBus] inst1_addr_i,
         input[`InstAddrBus] inst2_addr_i,
         
+        input[`SIZE_OF_CORR_PACK]  inst1_bpu_corr_i,
+        input[`SIZE_OF_CORR_PACK]  inst2_bpu_corr_i,
+        input[`SIZE_OF_BRANCH_INFO] branch_info_i,
+        
         input[`RegAddrBus]  waddr1_i,
         input[`RegAddrBus]  waddr2_i,
         input                              we1_i,
@@ -45,8 +49,15 @@ module ex_mem(
         input[`RegBus]          mem_addr_i,
         input[`RegBus]          reg2_i,
         
+        input is_in_delayslot1_i,
+        input is_in_delayslot2_i,
+        
         output  reg[`InstAddrBus]   inst1_addr_o,
         output  reg[`InstAddrBus]   inst2_addr_o,
+        
+        output[`SIZE_OF_CORR_PACK]  inst1_bpu_corr_o,
+        output[`SIZE_OF_CORR_PACK]  inst2_bpu_corr_o,         
+        output reg[`SIZE_OF_BRANCH_INFO] branch_info_o,
         
         output  reg[`RegAddrBus]    waddr1_o,
         output  reg[`RegAddrBus]    waddr2_o,
@@ -59,7 +70,9 @@ module ex_mem(
         output  reg                              whilo_o,
         output  reg[`AluOpBus]       aluop1_o,
         output  reg[`RegBus]            mem_addr_o,
-        output  reg[`RegBus]            reg2_o
+        output  reg[`RegBus]            reg2_o,
+        output  reg                     is_in_delayslot1_o,
+        output  reg                     is_in_delayslot2_o
         
             
         );
@@ -68,7 +81,7 @@ module ex_mem(
             if(rst == `RstEnable)   begin
                 inst1_addr_o <= `ZeroWord;
                 inst2_addr_o <= `ZeroWord;
-                
+                branch_info_o = {`ZeroWord,`NotBranch,`ZeroWord,`BTYPE_NUL};
                 waddr1_o <= `NOPRegAddr;
                 waddr2_o <= `NOPRegAddr;
                 we1_o <= `WriteDisable;
@@ -81,12 +94,13 @@ module ex_mem(
                 aluop1_o <= `WriteDisable;
                 mem_addr_o <= `ZeroWord;
                 reg2_o <= `ZeroWord;
-                
+                is_in_delayslot1_o <= `ZeroWord;
+                is_in_delayslot2_o <= `ZeroWord;
            // end else if (flush == `Flush && flush_cause == `Exception) begin    
             end else if(stall[1] == `Stop && stall[2] == `NoStop) begin
                 inst1_addr_o <= `ZeroWord;
                 inst2_addr_o <= `ZeroWord;
-                
+                branch_info_o = {`ZeroWord,`NotBranch,`ZeroWord,`BTYPE_NUL};                
                 waddr1_o <= `NOPRegAddr;
                 waddr2_o <= `NOPRegAddr;
                 we1_o <= `WriteDisable;
@@ -99,11 +113,13 @@ module ex_mem(
                 aluop1_o <= `EXE_NOP_OP;
                 mem_addr_o <= `ZeroWord;
                 reg2_o <= `ZeroWord;
+                is_in_delayslot1_o <= `ZeroWord;
+                is_in_delayslot2_o <= `ZeroWord;
             end else if(stall[1] == `NoStop)    begin
                 
                 inst1_addr_o <= inst1_addr_i ;
                 inst2_addr_o <= inst2_addr_i; 
-              
+                branch_info_o <= branch_info_i;
                 waddr1_o <= waddr1_i;
                 waddr2_o <= waddr2_i;
                 we1_o <= we1_i;
@@ -116,6 +132,8 @@ module ex_mem(
                 aluop1_o <= aluop1_i; 
                 mem_addr_o <= mem_addr_i; 
                 reg2_o <= reg2_i;
+                is_in_delayslot1_o <= is_in_delayslot1_i;
+                is_in_delayslot2_o <= is_in_delayslot2_i;
                             
             end
        end

@@ -25,6 +25,8 @@ module ex_top(
         
         input[`InstAddrBus]     inst1_addr_i,
         input[`InstAddrBus]     inst2_addr_i,
+        input[`SIZE_OF_CORR_PACK] inst1_bpu_corr_i,
+        input[`SIZE_OF_CORR_PACK] inst2_bpu_corr_i,
         input[`AluOpBus]     aluop1_i,
         input[`AluSelBus]     alusel1_i,
         input[`AluOpBus]     aluop2_i,
@@ -35,11 +37,10 @@ module ex_top(
         input[`RegBus]          reg4_i,
         input[`RegAddrBus]      waddr1_i,
         input[`RegAddrBus]      waddr2_i,
-         input                                   we1_i,
+        input                                   we1_i,
         input                                   we2_i,
         
-        input                           mul_ready_i,
-        input[`DoubleRegBus]    mul_i,
+ 
         input[`DoubleRegBus]    div_result_i,
         input                                     div_ready_i,
         
@@ -51,9 +52,14 @@ module ex_top(
         input[`RegBus]                  imm_fnl1_i,
         input                   issue_i,
         
+        input                   is_in_delayslot1_i,
+        input                   is_in_delayslot2_i,
+        
         
        output[`InstAddrBus]     inst1_addr_o,
        output[`InstAddrBus]     inst2_addr_o,
+       output[`SIZE_OF_CORR_PACK] inst1_bpu_corr_o,
+       output[`SIZE_OF_CORR_PACK] inst2_bpu_corr_o,
        output[`RegAddrBus]     waddr1_o,
        output[`RegAddrBus]     waddr2_o,
        output                                 we1_o,
@@ -68,7 +74,16 @@ module ex_top(
       output  reg[`RegBus]    lo_o,
       output  reg                       whilo_o,
       
+      output[`InstAddrBus]          npc_actual,
+      output                        branch_flag_actual,
+      output                        predict_flag,
+      output[`SIZE_OF_BRANCH_INFO]                        branch_info,
+      
       output                        issue_mode,
+      output                        is_in_delayslot1_o,
+      output                        is_in_delayslot2_o,
+      
+      
       //div
       output[`RegBus]               div_opdata1_o,
       output[`RegBus]               div_opdata2_o,
@@ -81,10 +96,10 @@ module ex_top(
       
       output[`RegBus]               mem_raddr_o,
       output[`RegBus]               mem_waddr_o,
-      output                                  mem_we_o,
-      output[3:0]                          mem_sel_o,
+      output                        mem_we_o,
+      output[3:0]                   mem_sel_o,
       output[`RegBus]               mem_data_o,
-      output                                  mem_re_o,
+      output                        mem_re_o,
       
       output                                 stallreq               
             
@@ -99,11 +114,16 @@ module ex_top(
     wire    ex_sub_2_whilo_o;
     
     assign issue_mode = issue_i;
+    assign is_in_delayslot1_o = is_in_delayslot1_i;
+    assign is_in_delayslot2_o = is_in_delayslot2_i;
     assign inst1_addr_o = inst1_addr_i;
     assign inst2_addr_o = inst2_addr_i;
+    assign inst1_bpu_corr_o = inst1_bpu_corr_i;
+    assign inst2_bpu_corr_o = inst2_bpu_corr_i;
     
     ex  u_ex1(
             .rst(rst),
+
             .aluop_i(aluop1_i),            
             .alusel_i(alusel1_i),           
             .reg1_i(reg1_i),          
@@ -142,8 +162,9 @@ module ex_top(
 
             );          
                     
-    ex  u_ex2(
+    ex_sub  u_ex2(
             .rst(rst),
+
             .aluop_i(aluop2_i),            
             .alusel_i(alusel2_i),           
             .reg1_i(reg3_i),          
@@ -169,11 +190,11 @@ module ex_top(
                 hi_o = `ZeroWord;
                 lo_o = `ZeroWord;
         end else if(ex_sub_2_whilo_o == `WriteEnable) begin
-                whilo_o = `WriteDisable;
+                whilo_o = `WriteEnable;
                 hi_o = ex_sub_2_hi_o;
                 lo_o = ex_sub_2_lo_o;
         end else if(ex_sub_1_whilo_o == `WriteEnable) begin
-                whilo_o = `WriteDisable;
+                whilo_o = `WriteEnable;
                 hi_o = ex_sub_1_hi_o;
                 lo_o = ex_sub_1_lo_o;                              
         end else begin

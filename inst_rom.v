@@ -34,21 +34,24 @@ module inst_rom (
 );
     //����һ�����飬��СΪinstmemnum��Ԫ�ؿ��Ϊinstbus��32��
     reg [`InstBus] inst_mem[0:`InstMemNum-1] ;          //InstMemNum = 131071
-
+    reg [`InstBus] inst1_small;
+    reg [`InstBus] inst2_small;
+    
     //ʹ���ļ�inst_rom.data��ʼ��ָ��洢��
-    initial $readmemh ("1_test_ori_big.data",inst_mem);
+    initial $readmemh ("3_test_mvAat_test.data",inst_mem);
 
     //����λ�ź���Чʱ��ȡ����Ӧ��ֵַ�е�ָ��
-    always @(*) begin  //改成时序电路？
+    always @(*) begin  
         if(ce == `ChipDisable) begin
-            inst1 <= `ZeroWord;     inst2 <= `ZeroWord;
+            inst1 = `ZeroWord;     inst2 = `ZeroWord;
         end else begin      //debug
-            inst1 <= inst_mem[addr[`InstMemNumLog2+1:2]]; //���ִ洢��������Ҫ��4��������λ��InstMemNumLog2=17
-            inst2 <= inst_mem[addr[`InstMemNumLog2+1:2]+1];
-            inst1_addr <= addr[`InstMemNumLog2+1:2];
-            inst2_addr <= addr[`InstMemNumLog2+1:2]+1;
-            //inst1 <= inst_mem[addr[`InstMemNumLog2+1:2]];
-            //inst2 <= inst_mem[addr[`InstMemNumLog2+3:4]];
+            inst1_small = inst_mem[addr[`InstMemNumLog2+1:2]]; //���ִ洢��������Ҫ��4��������λ��InstMemNumLog2=17
+            inst2_small = inst_mem[addr[`InstMemNumLog2+1:2]+1];
+            inst1 = {inst1_small[7:0],inst1_small[15:8],inst1_small[23:16],inst1_small[31:24]};
+            inst2 = {inst2_small[7:0],inst2_small[15:8],inst2_small[23:16],inst2_small[31:24]};
+            inst1_addr = addr[`InstMemNumLog2+1:2];
+            inst2_addr = addr[`InstMemNumLog2+1:2]+1;
+
             
         end
     end

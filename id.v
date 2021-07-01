@@ -27,8 +27,8 @@ module id(
     
     input[`RegBus]              reg1_data_i,
     input[`RegBus]              reg2_data_i,
-    //shu ju xiang guan
     
+    //前递解决数据相关
     input[`RegAddrBus]      ex_waddr1_i,
     input[`RegAddrBus]      ex_waddr2_i,
     input                                  ex_we1_i,
@@ -49,11 +49,15 @@ module id(
     input[`RegBus]               commit_wdata2_i,
     
     
-    //fang cun xiang guan   
-       
+    //访存相关   
+    input is_load,   
     //output reg[`RegAddrBus] reg1_addr_o,
     //output reg[`RegAddrBus] reg2_addr_o,
 
+    output reg is_div,  //是否为除法指令
+    output reg is_jb,
+    output reg is_ls,
+    output reg is_cp0,
    
     output reg[`AluOpBus]   aluop_o, 
     output reg[`AluSelBus]  alusel_o,
@@ -63,12 +67,14 @@ module id(
     output reg                       reg2_read_o,
     output reg[`RegAddrBus]     waddr_o,
     output reg                      we_o,
+    output reg              next_inst_in_delayslot,
     
     output  reg             hilo_re,
     output  reg             hilo_we,
     //生成的最终立即数    
-    output[`RegBus]         imm_fnl_o 
+    output[`RegBus]         imm_fnl_o ,
         
+    output                  load_dependency    
     );
     
     
@@ -101,6 +107,13 @@ module id(
             imm_ex = 32'h0;
             hilo_re = `ReadDisable;
             hilo_we = `ReadDisable;
+            next_inst_in_delayslot = `NotInDelaySlot;
+            is_div = 1'b0;
+            is_jb = 1'b0;
+            is_ls = 1'b0;
+            is_cp0 =1'b0;
+            
+            
             
         end else begin    
             aluop_o = `EXE_NOP_OP;
@@ -115,6 +128,11 @@ module id(
             imm_ex = `ZeroWord;
             hilo_re = `ReadDisable;
             hilo_we = `ReadDisable;
+            next_inst_in_delayslot = `NotInDelaySlot;
+            is_div = 1'b0;
+            is_jb = 1'b0;
+            is_ls = 1'b0;
+            is_cp0 = 1'b0;
             
             
         case(op)
@@ -177,7 +195,7 @@ module id(
                                 reg2_read_o =1'b1;
                                 instvalid =`InstValid;
                             end
-                            /*`EXE_SYNC:begin             //keep it  or not ?
+                            `EXE_SYNC:begin             //keep it  or not ?
                                 we_o =`WriteDisable;
                                 aluop_o =`EXE_NOP_OP;
                                 alusel_o =`EXE_RES_NOP;
@@ -185,7 +203,7 @@ module id(
                                 reg2_read_o =1'b1;
                                 instvalid =`InstValid;
                             end
-                            */
+                            
                             `EXE_MFHI: begin
                                 we_o = `WriteEnable;
                                 aluop_o = `EXE_MFHI_OP;
@@ -223,7 +241,24 @@ module id(
                                 instvalid = `InstValid;
                                 hilo_we = `ReadEnable;
                              end
-                             
+                    //条件移动 ID两自部件存在数据相关（双发射），不能在此立刻判断，先默认条件满足，在执行阶段进一步判断                          
+                            `EXE_MOVN: begin
+                                we_o = `WriteEnable;
+                                aluop_o = `EXE_MOVN_OP;
+                                alusel_o = `EXE_RES_MOVE;
+                                reg1_read_o = 1'b1;
+                                reg2_read_o = 1'b1;
+                                instvalid = `InstValid;                       
+                             end
+                            `EXE_MOVZ: begin
+                                we_o = `WriteEnable;
+                                aluop_o = `EXE_MOVZ_OP;
+                                alusel_o = `EXE_RES_MOVE;
+                                reg1_read_o = 1'b1;
+                                reg2_read_o = 1'b1;
+                                instvalid = `InstValid;                             
+                             end 
+                                                 
                             
                             `EXE_SLT:begin
                                 we_o = `WriteEnable;
@@ -273,8 +308,61 @@ module id(
                                 reg2_read_o =1'b1;
                                 instvalid =`InstValid;
                             end
-            
+                            `EXE_MULT: begin
+                                we_o =`WriteEnable;
+                                aluop_o = `EXE_MULT_OP;
+                                reg1_read_o = `ReadEnable;
+                                reg2_read_o = `ReadEnable;
+                                instvalid = `InstValid;
+                             end
+                             `EXE_MULTU: begin   
+                                we_o = `WriteEnable;
+                                aluop_o = `EXE_MULTU_OP;
+                                reg1_read_o = `ReadEnable;
+                                reg2_read_o = `ReadEnable;
+                                instvalid = `InstValid;
+                             end
                             
+                            `EXE_DIV: begin
+                                we_o = `WriteDisable;
+                                aluop_o = `EXE_DIV_OP;
+                                //alusel_o = `EXE_RES_ARITHMETIC;
+                                reg1_read_o = 1'b1;
+                                reg2_read_o = 1'b1;
+                                instvalid = `InstValid;
+                                is_div = 1'b1;
+                            end
+                            `EXE_DIVU: begin
+                                we_o = `WriteDisable;
+                                aluop_o = `EXE_DIVU_OP;
+                                //alusel_o = `EXE_RES_ARITHMETIC;
+                                reg1_read_o = 1'b1;
+                                reg2_read_o = 1'b1;
+                                instvalid = `InstValid;
+                            end
+                            
+                            `EXE_JR: begin
+                                we_o = `WriteDisable;
+                                aluop_o = `EXE_JR_OP;
+                                alusel_o = `EXE_RES_JUMP_BRANCH;
+                                reg1_read_o = 1'b1;
+                                reg2_read_o = 1'b0;
+                                instvalid = `InstValid;
+                                next_inst_in_delayslot = `InDelaySlot;                            
+                                is_jb = 1'b1;
+                              end  
+                            
+                            `EXE_JALR: begin
+                                we_o = `WriteEnable;
+                                aluop_o = `EXE_JALR_OP;
+                                alusel_o = `EXE_RES_JUMP_BRANCH;
+                                reg1_read_o = 1'b1;
+                                reg2_read_o = 1'b0;
+                                instvalid = `InstValid;
+                                next_inst_in_delayslot = `InDelaySlot;                            
+                                is_jb = 1'b1;
+                              end      
+                                
                             default:    ;
                         endcase
                    end
@@ -333,7 +421,7 @@ module id(
                 alusel_o =`EXE_RES_LOGIC;
                 waddr_o = rt;
                 we_o =`WriteEnable;
-                instvalid <=`InstValid;
+                instvalid =`InstValid;
                 reg1_read_o =1'b1;
                 reg2_read_o =1'b0;
                 
@@ -361,7 +449,7 @@ module id(
                 
                 imm_ex ={inst_i[15:0],16'h0};
                 waddr_o = rt;
-                instvalid <=`InstValid;
+                instvalid =`InstValid;
             end
            /* `EXE_PREF:begin                         //keep or not?
                 we_o =`WriteDisable;
@@ -372,24 +460,215 @@ module id(
                 instvalid =`InstValid;
             end*/
             
-    
-            default:    begin
-                end
-                
+            `EXE_SLTI:begin
+                we_o = `WriteEnable;
+                aluop_o =`EXE_SLT_OP;
+                alusel_o =`EXE_RES_ARITHMETIC;
+                reg1_read_o =1'b1;
+                reg2_read_o =1'b0;
+                imm_ex <= { {16{inst_i[15]}} , inst_i[15:0] };
+                waddr_o = inst_i[20:16];
+                instvalid =`InstValid;
+            end
+            `EXE_SLTIU:begin
+                we_o = `WriteEnable;
+                aluop_o =`EXE_SLTU_OP;
+                alusel_o =`EXE_RES_ARITHMETIC;
+                reg1_read_o = 1'b1;
+                reg2_read_o = 1'b0;
+                imm_ex = { {16{inst_i[15]}}, inst_i[15:0] };
+                waddr_o = inst_i[20:16];
+                instvalid =`InstValid;
+            end
+            `EXE_ADDI:begin
+                we_o = `WriteEnable;
+                aluop_o =`EXE_ADDI_OP;
+                alusel_o =`EXE_RES_ARITHMETIC;
+                reg1_read_o =1'b1;
+                reg2_read_o =1'b0;
+                imm_ex = { {16{inst_i[15]}}, inst_i[15:0] };
+                waddr_o = inst_i[20:16];
+                instvalid =`InstValid;
+            end
+            `EXE_ADDIU:begin
+                we_o = `WriteEnable;
+                aluop_o =`EXE_ADDIU_OP;
+                alusel_o =`EXE_RES_ARITHMETIC;
+                reg1_read_o =1'b1;
+                reg2_read_o =1'b0;
+                imm_ex = { {16{inst_i[15]}}, inst_i[15:0] };
+                waddr_o = inst_i[20:16];
+                instvalid =`InstValid;
+            end
+            `EXE_J:begin
+                we_o = `WriteDisable;
+                aluop_o =`EXE_J_OP;
+                alusel_o =`EXE_RES_JUMP_BRANCH;
+                reg1_read_o =1'b0;
+                reg2_read_o =1'b0;
+                imm_ex = {4'h0,inst_i[25:0],2'h0};
+                next_inst_in_delayslot = `InDelaySlot;
+                instvalid =`InstValid;
+                is_jb = 1'b1;
+            end
+            `EXE_JAL:begin
+                we_o = `WriteEnable;
+                aluop_o =`EXE_JAL_OP;
+                alusel_o =`EXE_RES_JUMP_BRANCH;
+                reg1_read_o =1'b0;
+                reg2_read_o =1'b0;
+                waddr_o = 5'b11111;
+                imm_ex = {4'h0,inst_i[25:0],2'h0};
+                next_inst_in_delayslot = `InDelaySlot;
+                instvalid =`InstValid;
+                is_jb = 1'b1;
+            end
+            `EXE_BEQ:begin
+                we_o = `WriteDisable;
+                aluop_o =`EXE_BEQ_OP;
+                alusel_o =`EXE_RES_JUMP_BRANCH;
+                reg1_read_o =1'b1;
+                reg2_read_o =1'b1;
+                imm_ex = {{14{imm[15]}},imm,2'h0};
+                instvalid =`InstValid;
+                is_jb = 1'b1;
+                next_inst_in_delayslot = `InDelaySlot;
+             end
+            `EXE_BGTZ:begin
+                we_o = `WriteDisable;
+                aluop_o =`EXE_BGTZ_OP;
+                alusel_o =`EXE_RES_JUMP_BRANCH;
+                reg1_read_o =1'b1;
+                reg2_read_o =1'b0;
+                imm_ex = {{14{imm[15]}},imm,2'h0};
+                instvalid =`InstValid;
+                is_jb = 1'b1;
+                next_inst_in_delayslot = `InDelaySlot;
+            end
+            `EXE_BLEZ:begin
+                we_o = `WriteDisable;
+                aluop_o =`EXE_BLEZ_OP;
+                alusel_o =`EXE_RES_JUMP_BRANCH;
+                reg1_read_o =1'b1;
+                reg2_read_o =1'b0;
+                imm_ex = {{14{imm[15]}},imm,2'h0};
+                instvalid =`InstValid;
+                is_jb = 1'b1;
+                next_inst_in_delayslot = `InDelaySlot;
+            end
+            `EXE_BNE:begin
+                we_o = `WriteDisable;
+                aluop_o =`EXE_BLEZ_OP;
+                alusel_o =`EXE_RES_JUMP_BRANCH;
+                reg1_read_o =1'b1;
+                reg2_read_o =1'b1;
+                imm_ex = {{14{imm[15]}},imm,2'h0};
+                instvalid =`InstValid;
+                is_jb = 1'b1;
+                next_inst_in_delayslot = `InDelaySlot;
+            end
+            
+            
+            `EXE_REGIMM_INST: begin
+                next_inst_in_delayslot = `InDelaySlot;
+                case(rt)
+                    `EXE_BGEZ:begin
+                        we_o = `WriteDisable;
+                        aluop_o =`EXE_BGEZ_OP;
+                        alusel_o =`EXE_RES_JUMP_BRANCH;
+                        reg1_read_o =1'b1;
+                        reg2_read_o =1'b0;
+                        imm_ex = {{14{imm[15]}},imm,2'h0};
+                        instvalid =`InstValid;
+                        is_jb = 1'b1;
+                     end
+                    `EXE_BGEZAL:begin
+                        we_o = `WriteEnable;
+                        aluop_o =`EXE_BGEZAL_OP;
+                        alusel_o =`EXE_RES_JUMP_BRANCH;
+                        reg1_read_o =1'b1;
+                        reg2_read_o =1'b0;
+                        imm_ex = {{14{imm[15]}},imm,2'h0};
+                        instvalid =`InstValid;
+                        is_jb = 1'b1;
+
+                        waddr_o = 5'b11111;
+                    end 
+                     `EXE_BLTZ:begin
+                        we_o = `WriteDisable;
+                        aluop_o =`EXE_BGEZAL_OP;
+                        alusel_o =`EXE_RES_JUMP_BRANCH;
+                        reg1_read_o =1'b1;
+                        reg2_read_o =1'b0;
+                        instvalid =`InstValid;
+                        imm_ex = {{14{imm[15]}},imm,2'h0};
+                        is_jb = 1'b1;  
+                    end
+                    
+                     `EXE_BLTZAL:begin
+                        we_o = `WriteEnable;
+                        aluop_o =`EXE_BGEZAL_OP;
+                        alusel_o =`EXE_RES_JUMP_BRANCH;
+                        reg1_read_o =1'b1;
+                        reg2_read_o =1'b0;
+                        instvalid =`InstValid;
+                        imm_ex = {{14{imm[15]}},imm,2'h0};
+                        is_jb = 1'b1;  
+                        waddr_o = 5'b11111;
+   
+                    end
+                    default: begin
+                        
+                    end
                 endcase
             end
             
-                  
-           
-end            
-      
+            `EXE_SPECIAL2_INST:  begin
+                case (funct)
+                    /*`EXE_CLZ:begin
+                        we_o = `WriteEnable;
+                        aluop_o =`EXE_CLZ_OP;
+                        alusel_o =`EXE_RES_ARITHMETIC;
+                        reg1_read_o =1'b1;
+                        reg2_read_o =1'b0;
+                        instvalid =`InstValid;
+                    end 
+                    `EXE_CLO:begin
+                        we_o = `WriteEnable;
+                        aluop_o =`EXE_CLO_OP;
+                        alusel_o =`EXE_RES_ARITHMETIC;
+                        reg1_read_o =1'b1;
+                        reg2_read_o =1'b0;
+                        instvalid =`InstValid;
+                    end */
+                    `EXE_MUL:begin           //ֻ�������ĵ�32λ
+                        we_o = `WriteEnable;
+                        aluop_o =`EXE_MUL_OP;
+                        alusel_o =`EXE_RES_MUL;
+                        reg1_read_o =1'b1;
+                        reg2_read_o =1'b1;
+                        instvalid =`InstValid;
+                    end 
+            
+            
+                    default:begin                        
+                    end 
+                endcase     //end case special2_inst 
+            end
+            
+        default: ;
+        endcase
+       
+    end
+end  
+
 // need to solve correlation problems      
 always@(*)  begin
         reg1_o = `ZeroWord;
     if(rst == `RstEnable)   begin
         reg1_o = `ZeroWord;    
         
-     // solve the problem of data correlation   
+     // solve the problem of data correlation(hazard)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
     end else if(reg1_read_o == `ReadEnable && ex_we2_i == `WriteEnable && ex_waddr2_i == reg1_raddr_o)  begin
         reg1_o = ex_wdata2_i;
     end else if(reg1_read_o == `ReadEnable && ex_we1_i == `WriteEnable && ex_waddr1_i == reg1_raddr_o) begin

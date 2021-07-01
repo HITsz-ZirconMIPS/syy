@@ -27,17 +27,21 @@ module pc_reg(
     input   flush,
     input   flush_cause,
     
+   
+    
     input   stallreq_from_icache,
+    input branch_flag,
     input[`InstAddrBus] ex_pc,
     input[`InstAddrBus] npc_actual,
     input[`InstAddrBus] epc,
-    //input issue,
+    input[`InstAddrBus] npc_from_cache,
+   
     
     input   ibuffer_full,
     
     output   reg [`InstAddrBus] pc,
     output   reg    rreq_to_icache
-    //output   reg    issue    
+   
     
     );
     
@@ -53,16 +57,19 @@ end
 
 always @(posedge clk)   pc<=npc;
     
-//逻辑要改一下    组合逻辑？  使用npc的意义是什么？
+//逻辑要改一下    组合逻辑？  使用npc的意义是什么？ 次态 next_pc 
 always@(*) begin
     if(rreq_to_icache==  `ChipDisable) begin
         npc = 32'hbfc00000;
     end else if(stall[0]==`Stop)begin
          npc = pc;    
-    //end else if(issue == `SingleIssue) begin
-      //  npc <= pc + 4'h4;    
-    end else 
-        npc <= pc + 4'h8;
+    end else if(flush == `Flush && flush_cause == `FailedBranchPrediction && branch_flag == `Branch) begin
+         npc = npc_actual;  
+    end else if(flush == `Flush && flush_cause == `FailedBranchPrediction && branch_flag == `NotBranch) begin
+         npc = ex_pc + 32'h8;
+    end else if(ibuffer_full) npc = pc;        
+    else 
+         npc = pc + 4'h8;
               
 end    
     

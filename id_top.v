@@ -23,6 +23,9 @@
 module id_top(
         
         input rst,
+        input stallreq_from_ex,
+        input stallreq_from_dcache,
+        
         
         input[`InstBus]     inst1_i,
         input[`InstBus]     inst2_i,
@@ -34,7 +37,11 @@ module id_top(
         input[`RegBus]      reg3_data_i, 
         input[`RegBus]      reg4_data_i, 
         
-
+        input[`SIZE_OF_CORR_PACK] inst1_bpu_corr_i,
+        input[`SIZE_OF_CORR_PACK] inst2_bpu_corr_i,
+        
+        input   issue_en_i,
+        input   is_in_delayslot_i,
         
         input[`RegAddrBus]      ex_waddr1_i,
         input[`RegAddrBus]      ex_waddr2_i,
@@ -75,6 +82,9 @@ module id_top(
         output[`InstAddrBus]    inst1_addr_o,
         output[`InstAddrBus]    inst2_addr_o,
         
+        output[`SIZE_OF_CORR_PACK] inst1_bpu_corr_o,
+        output[`SIZE_OF_CORR_PACK] inst2_bpu_corr_o,
+        
         
         output[`RegAddrBus]     reg1_raddr_o,
         output[`RegAddrBus]     reg2_raddr_o,
@@ -95,17 +105,22 @@ module id_top(
         output                                   we1_o,
         output                                   we2_o,
         
+        output      is_in_delayslot1_o,
+        output      is_in_delayslot2_o,
+        
         output  [`RegBus]               imm_ex_o,
         
         output  reg[`RegBus]            hi_o,
         output  reg[`RegBus]            lo_o,
+        
+        output      ninst_in_delayslot,     //next inst in delayslot 用于异常判断
        
         output reg                             issue_o,
         output  reg                             issued_o,
         output  reg                     stallreq_from_id
     );
     
-    wire[`AluOpBus]    id_sub_2_aluop_o;
+    wire[`AluOpBus]     id_sub_2_aluop_o;
     wire[`AluSelBus]    id_sub_2_alusel_o;    
     wire[`RegAddrBus]   id_sub_2_waddr_o;
     wire    id_sub_2_we_o;
@@ -119,6 +134,8 @@ module id_top(
     reg[31:0]   id_exception_type2_o;
     reg[`RegBus]    id_reg3_o;
     reg[`RegBus]    id_reg4_o;
+    wire next_inst_in_delayslot;
+    wire id2_in_delayslot;
     
     reg reg3_raw_dependency;
     reg reg4_raw_dependency;
@@ -127,9 +144,18 @@ module id_top(
     wire  reg34_load_dependency;
     wire  load_dependency;
     
+    wire is_load;
+    wire is_div1,is_div2,is_jb1,is_jb2,is_ls1,is_ls2,is_cp01,is_cp02;
+    
     wire hilo_re1,hilo_re2,hilo_we1,hilo_we2;
     wire reg3_read_o;
     wire reg4_read_o;
+    
+    assign id2_inst_in_delayslot = (issue_o == `DualIssue)? next_inst_in_delayslot : `NotInDelaySlot;
+    assign next_inst_in_delayslot = (issue_o == `SingleIssue)? next_inst_in_delayslot : `NotInDelaySlot;
+    assign is_in_delayslot1_o = is_in_delayslot_i;
+    assign is_in_delayslot2_o = (issue_o == `DualIssue)? id2_inst_in_delayslot:`NotInDelaySlot;
+    //assign load_dependency = 
     
     assign reg1_raddr_o = (rst==`RstEnable) ? `NOPRegAddr : inst1_i[25:21];
     assign reg2_raddr_o = (rst==`RstEnable) ? `NOPRegAddr : inst1_i[20:16];
@@ -167,6 +193,10 @@ module id_top(
         .waddr_o(waddr1_o),
         .we_o(we1_o),
         
+        .next_inst_in_delayslot(next_inst_in_delayslot),
+        .hilo_re(hilo_re1),
+        .hilo_we(hilo_we1),
+        
         
         .imm_fnl_o(imm_ex_o)      //  ??
         
@@ -203,6 +233,10 @@ module id_top(
         .reg2_read_o(reg4_read_o),
         .waddr_o(id_sub_2_waddr_o),
         .we_o(id_sub_2_we_o),
+        
+        .next_inst_in_delayslot(),
+        .hilo_re(hilo_re2),
+        .hilo_we(hilo_we2),
         
         .imm_fnl_o()
         
@@ -273,10 +307,14 @@ end
 end
  
 always @(*) begin   //缺少其他逻辑判断，比如延迟槽
-    if(rst == `RstEnable)  begin
+    if(rst == `RstEnable || stallreq_from_ex == `Stop || stallreq_from_dcache == `Stop)  begin
         issued_o = 1'b0;
         stallreq_from_id = `NoStop;
-    end else begin      //！！！改过了！！需要改回来
+    end else if(is_in_delayslot_i)begin
+        issue_o = 1'b1;
+        stallreq_from_id = `NoStop;
+        
+    end else begin      //！！！ 这样才是正确的？ 感觉他们写错了
         issued_o = 1'b1;
         stallreq_from_id = `NoStop;
         end     

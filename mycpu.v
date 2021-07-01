@@ -86,18 +86,25 @@ module mycpu(
     wire[`RegBus]   hi_o;
     wire[`RegBus]   lo_o;
     
+    wire[`SIZE_OF_CORR_PACK] inst1_bpu_corr_i;
+    wire[`SIZE_OF_CORR_PACK] inst2_bpu_corr_i;
+    wire[`SIZE_OF_BRANCH_INFO] branch_info_i;
+    
     wire id_issue_en_i;
     wire[`InstBus] id_inst1_i;
     wire[`InstBus] id_inst2_i;
     wire[`InstAddrBus]  id_inst1_addr_i;
     wire[`InstAddrBus]  id_inst2_addr_i;
+    wire[`SIZE_OF_CORR_PACK] id_inst1_bpu_corr_i;
+    wire[`SIZE_OF_CORR_PACK] id_inst2_bpu_corr_i;
     wire[`RegBus]   reg31;
     
-    
+    wire is_in_delayslot_i;
     
     wire[`InstAddrBus]  id_inst1_addr_o;
     wire[`InstAddrBus]  id_inst2_addr_o;
-    //wire
+    wire[`SIZE_OF_CORR_PACK] id_inst1_bpu_corr_o;
+    wire[`SIZE_OF_CORR_PACK] id_inst2_bpu_corr_o;
     wire[`AluOpBus]          id_aluop1_o;              
     wire [`AluOpBus]         id_aluop2_o; 
     wire [`AluSelBus]         id_alusel1_o;                   
@@ -116,9 +123,11 @@ module mycpu(
     
     wire                            id_issue_mode_o;
     wire                            id_issued_o;
+    wire                            id_is_in_delayslot;
+    wire                            next_inst_in_delayslot;
     
-    //mul
-    //wire  mul_s     
+    
+           
     
     // div                
     wire    signed_div;
@@ -130,6 +139,8 @@ module mycpu(
     
     wire[`InstAddrBus]  ex_inst1_addr_i;
     wire[`InstAddrBus]  ex_inst2_addr_i;
+    wire[`SIZE_OF_CORR_PACK]  ex_inst1_bpu_corr_i;
+    wire[`SIZE_OF_CORR_PACK]  ex_inst2_bpu_corr_i;
     wire[`AluOpBus]         ex_aluop1_i;     
     wire [`AluOpBus]         ex_aluop2_i; 
     wire [`AluSelBus]         ex_alusel1_i;                   
@@ -149,6 +160,9 @@ module mycpu(
     
     wire[`InstAddrBus]  ex_inst1_addr_o;
     wire[`InstAddrBus]  ex_inst2_addr_o;
+    wire[`SIZE_OF_CORR_PACK]  ex_inst1_bpu_corr_o;
+    wire[`SIZE_OF_CORR_PACK]  ex_inst2_bpu_corr_o;
+    
     wire [`RegAddrBus]    ex_waddr1_o;                    
     wire [`RegAddrBus]    ex_waddr2_o;  
     wire    ex_we1_o;
@@ -162,6 +176,13 @@ module mycpu(
     wire[`RegBus]   ex_mem_addr_o;
     wire[`RegBus]   ex_reg2_o;
     
+    wire[`InstAddrBus]  ex_npc_actual_o;
+    wire ex_branch_flag_o;
+    wire ex_predict_flag_o;
+    wire[`SIZE_OF_BRANCH_INFO] ex_branch_info_o;
+    wire ex_issue_mode_o;
+    wire ex_is_in_delayslot1_o;
+    wire ex_is_in_delayslot2_o;
     
     wire[`InstAddrBus]  mem_inst1_addr_i;
     wire[`InstAddrBus]  mem_inst2_addr_i;
@@ -190,6 +211,9 @@ module mycpu(
     wire[`RegBus]   mem_lo_o;
     wire    mem_whilo_o;
     wire[`RegBus]   mem_mem_addr_o;      
+    wire mem_is_in_delayslot1_o;
+    wire mem_is_in_delayslot2_o;
+    
     
     wire[`RegAddrBus]        commit_waddr1_o;
     wire[`RegAddrBus]        commit_waddr2_o;  
@@ -202,6 +226,7 @@ module mycpu(
         .rst(rst),
         .stallreq_from_ex(stallreq_from_ex),
         .stallreq_from_id(stallreq_from_id),
+        .predict_flag(ex_predict_flag_o),
         .stall(stall),
         .flush(flush),
         .flush_cause(flush_cause),
@@ -218,6 +243,7 @@ module mycpu(
         .flush(flush),
         .flush_cause(flush_cause),
         .stallreq_from_icache(stallreq_from_icache),
+        .branch_flag(ex_branch_flag_o),
         .ibuffer_full(ibuffer_full),
         .pc(raddr_to_icache),
         .rreq_to_icache(rreq_to_icache)
@@ -245,6 +271,18 @@ module mycpu(
         .reg31(reg31)
             
      );
+     
+     hilo_reg  u_hiloreg(
+        .clk(clk),
+        .rst(rst),
+        .we(we_hilo),
+        .hi_i(hi_i),
+        .lo_i(lo_i),
+        .hi_o(hi_o),
+        .lo_o(lo_o)
+        );
+     
+     
  
     Instbuffer  u_buffer(
         .clk(clk),
@@ -265,7 +303,7 @@ module mycpu(
         .ICache_inst2_addr_i(inst2_addr_from_icache),
         //.bpu_corr1_i(corr_pack0_from_cache_o),
         //.bpu_corr2_i(corr_pack1_from_cache_o),
-        .ICache_inst1_valid_o(1),//(inst1_valid_from_icache),
+        .ICache_inst1_valid_o(1),//(inst1_valid_from_icache), //!!!!!!!!!!!!改了
         .ICache_inst2_valid_o(1),//(inst2_valid_from_icache),
 	    .buffer_full_o(ibuffer_full) 
             
@@ -275,10 +313,16 @@ module mycpu(
  
     id_top  u_id_top(
         .rst(rst),
+        .stallreq_from_ex(stallreq_from_ex),
+        .stallreq_from_dcache(stallreq_from_dcache),
         .inst1_i(id_inst1_i),
         .inst2_i(id_inst2_i),
         .inst1_addr_i(id_inst1_addr_i),
-        .inst2_addr_i(id_inst2_addr_i),    
+        .inst2_addr_i(id_inst2_addr_i), 
+        .inst1_bpu_corr_i(id_inst1_bpu_corr_i),
+        .inst2_bpu_corr_i(id_inst2_bpu_corr_i),   
+        .issue_en_i(id_issue_en_i),
+        .is_in_delayslot_i(id_issue_en_i),
         .reg1_data_i(rf_rdata1),
         .reg2_data_i(rf_rdata2),
         .reg3_data_i(rf_rdata3),
@@ -311,12 +355,13 @@ module mycpu(
         .mem_hi_i(mem_hi_o),
         .mem_lo_i(mem_lo_o),
         .mem_whilo_i(mem_whilo_o),        
-        .commit_hi_i(commit_hi_o),
-        .commit_lo_i(commit_lo_o),
-        .commit_whilo_i(commit_whilo_o),  
+        .commit_hi_i(hi_i),
+        .commit_lo_i(lo_i),
+        .commit_whilo_i(we_hilo),  
         .inst1_addr_o(id_inst1_addr_o),
         .inst2_addr_o(id_inst2_addr_o),
-          
+        .inst1_bpu_corr_o(id_inst1_bpu_corr_o),
+        .inst2_bpu_corr_o(id_inst2_bpu_corr_o), 
         .reg1_raddr_o(rf_raddr1),                   
         .reg2_raddr_o(rf_raddr2),                   
         .reg3_raddr_o(rf_raddr3),                   
@@ -335,12 +380,15 @@ module mycpu(
         .we2_o(id_we2_o),  
         .hi_o(id_hi_o),
         .lo_o(id_lo_o),       
-                                
-        .imm_ex_o(id_imm_fnl1_o),               
+        .is_in_delayslot1_o(id_is_in_delayslot1_o),
+        .is_in_delayslot2_o(id_is_in_delayslot2_o),
+        .imm_ex_o(id_imm_fnl1_o),
+        .ninst_in_delayslot(next_inst_in_delayslot),
+                                              
                                 
         .issue_o(id_issue_mode_o),
-        .issued_o(id_issued_o)
-        
+        .issued_o(id_issued_o),
+        .stallreq_from_id(stallreq_from_id)
         );          
         
         
@@ -351,7 +399,9 @@ module mycpu(
             .flush_cause(flush_cause),
             .stall(stall),
             . inst1_addr_i(id_inst1_addr_o),                    
-            . inst2_addr_i(id_inst2_addr_o),                    
+            . inst2_addr_i(id_inst2_addr_o),  
+            . inst1_bpu_corr_i(id_inst1_bpu_corr_o),
+            . inst2_bpu_corr_i(id_inst2_bpu_corr_o),                     
             . aluop1_i(id_aluop1_o),                      
             . alusel1_i(id_alusel1_o),                    
             . aluop2_i(id_aluop2_o),                      
@@ -363,9 +413,16 @@ module mycpu(
             . waddr1_i(id_waddr1_o),                         
             . waddr2_i(id_waddr2_o),                         
             . we1_i(id_we1_o),             
-            . we2_i(id_we2_o),             
-            . imm_fnl_i(id_imm_fnl1_o),         
+            . we2_i(id_we2_o),    
+            . hi_i(id_hi_o),
+            . lo_i(id_lo_o),
+                     
+            . imm_fnl1_i(id_imm_fnl1_o),         
             . issue_i(id_issue_mode_o),           
+            . ex_issue_mode_i(ex_issue_mode_o),
+            . next_inst_in_delayslot_i(next_inst_in_delayslot),
+            . is_in_delayslot1_i(id_is_in_delayslot1_o),
+            . is_in_delayslot2_i(id_is_in_delayslot2_o),
             . inst1_addr_o(ex_inst1_addr_i),                    
             . inst2_addr_o(ex_inst2_addr_i),                         
             .  aluop1_o(ex_aluop1_i),                       
@@ -380,9 +437,13 @@ module mycpu(
             .    waddr2_o(ex_waddr2_i),                            
             .     we1_o(ex_we1_i),               
             .     we2_o(ex_we2_i),               
+            .   hi_o(ex_hi_i),
+            .   lo_o(ex_lo_i),
             .     imm_fnl1_o(ex_imm_fnl1_i),          
-            .     issue_o(ex_issue_i)
-                 
+            .     issue_o(ex_issue_i),
+            .   next_inst_in_delayslot_o(ex_is_in_delayslot_i),      //??  
+            .   is_in_delayslot1_o(ex_is_in_delayslot1_i),         
+            .   is_in_delayslot2_o(ex_is_in_delayslot2_i)         
                  
                  );              
                 
@@ -393,7 +454,7 @@ module mycpu(
             .opdata1_i(div_opdata1),
             .opdata2_i(div_opdata2),
             .start_i(div_start),
-                        
+            .annul_i(flush==`Flush && flush_cause == `Exception),            
             .result_o(div_result),
             .ready_o(div_ready)
             
@@ -403,7 +464,9 @@ module mycpu(
 ex_top  u_ex_top(
             .rst(rst),
             . inst1_addr_i(ex_inst1_addr_i),                    
-            . inst2_addr_i(ex_inst2_addr_i),                    
+            . inst2_addr_i(ex_inst2_addr_i),  
+            . inst1_bpu_corr_i(ex_inst1_bpu_corr_i),
+            . inst2_bpu_corr_i(ex_inst2_bpu_corr_i),                               
             . aluop1_i(ex_aluop1_i),                      
             . alusel1_i(ex_alusel1_i),                    
             . aluop2_i(ex_aluop2_i),                      
@@ -417,10 +480,19 @@ ex_top  u_ex_top(
             . we1_i(ex_we1_i),             
             . we2_i(ex_we2_i),             
             
+            .div_result_i(div_result),
+            .div_ready_i(div_ready),
+            .hi_i(ex_hi_i),
+            .lo_i(ex_lo_i),
+            
             . imm_fnl1_i(ex_imm_fnl1_i),         
-            . issue_i(ex_issue_i),           
+            . issue_i(ex_issue_i),    
+            . is_in_delayslot1_i(ex_is_in_delayslot1_i),
+            . is_in_delayslot2_i(ex_is_in_delayslot2_i),       
             . inst1_addr_o(ex_inst1_addr_o),                    
-            . inst2_addr_o(ex_inst2_addr_o),                                         
+            . inst2_addr_o(ex_inst2_addr_o),        
+            . inst1_bpu_corr_o(ex_inst1_bpu_corr_o),
+            . inst2_bpu_corr_o(ex_inst2_bpu_corr_o),                                
             .    waddr1_o(ex_waddr1_o),                            
             .    waddr2_o(ex_waddr2_o),                            
             .     we1_o(ex_we1_o),               
@@ -452,6 +524,9 @@ ex_top  u_ex_top(
             .stall(stall),
             .inst1_addr_i(ex_inst1_addr_o),
             .inst2_addr_i(ex_inst2_addr_o),
+            . inst1_bpu_corr_i(ex_inst1_bpu_corr_o),
+            . inst2_bpu_corr_i(ex_inst2_bpu_corr_o),                 
+            
             .waddr1_i(ex_waddr1_i),
             .waddr2_i(ex_waddr2_i),
             .we1_i(ex_we1_o),
@@ -464,28 +539,34 @@ ex_top  u_ex_top(
             .aluop1_i(ex_aluop1_o),
             .mem_addr_i(ex_mem_addr_o),
             .reg2_i(ex_reg2_o),
-            
+            .is_in_delayslot1_i(ex_is_in_delayslot1_o),
+            .is_in_delayslot2_i(ex_is_in_delayslot2_o),
+            . inst1_addr_o(mem_inst1_addr_i),
+            . inst2_addr_o(mem_inst2_addr_i),
+            . inst1_bpu_corr_o(mem_inst1_bpu_corr_i),
+            . inst2_bpu_corr_o(mem_inst2_bpu_corr_i), 
+            .branch_info_o(branch_info_i),
             .waddr1_o(mem_waddr1_i),
             .waddr2_o(mem_waddr2_i),
             .we1_o(mem_we1_i),
             .we2_o(mem_we2_i),
             .wdata1_o(mem_wdata1_i),
             .wdata2_o(mem_wdata2_i),
-
             .hi_o(mem_hi_i),
-            .lo_o(mem_lo_o),
-            .whilo_o(mem_whilo_o),
+            .lo_o(mem_lo_i),
+            .whilo_o(mem_whilo_i),
             .aluop1_o(mem_aluop1_i),
             .mem_addr_o(mem_mem_addr_i),
-            .reg2_o(mem_reg2_i)        
-        
+            .reg2_o(mem_reg2_i),        
+            .is_in_delayslot1_o(mem_is_in_delayslot1_i),
+            .is_in_delayslot2_o(mem_is_in_delayslot2_i)
                
         
     );
  
- mem    u_mem(
+    mem  u_mem(
         .rst(rst),
-        
+        .mem_data_i(rdata_from_dcache),
         .inst1_addr_i(mem_inst1_addr_i),
         .inst2_addr_i(mem_inst2_addr_i),
         .waddr1_i(mem_waddr1_i),
@@ -501,6 +582,9 @@ ex_top  u_ex_top(
         .mem_addr_i(mem_mem_addr_i),
         .reg2_i(mem_reg2_i),
         
+        .is_in_delayslot1_i(mem_is_in_delayslot1_i),
+        .is_in_delayslot2_i(mem_is_in_delayslot2_i),
+        
         .inst1_addr_o(mem_inst1_addr_o),
         .inst2_addr_o(mem_inst2_addr_o),
         .waddr1_o(mem_waddr1_o),
@@ -513,8 +597,10 @@ ex_top  u_ex_top(
         .lo_o(mem_lo_o),
         .whilo_o(mem_whilo_o),
 
-        .mem_addr_o(mem_mem_addr_o)
+        .mem_addr_o(mem_mem_addr_o),
  
+        .is_in_delayslot1_o(mem_is_in_delayslot1_o),
+        .is_in_delayslot2_o(mem_is_in_delayslot2_o)
  );
  
     commit  u_commit(

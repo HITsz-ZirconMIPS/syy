@@ -35,10 +35,11 @@ module mem(
         input[`RegBus]               hi_i,
         input[`RegBus]               lo_i,
         input                                  whilo_i,    
-        input[`AluOpBus]           aluop1_i,
+        input[`AluOpBus]            aluop1_i,
         input[`RegBus]              mem_addr_i,
         input[`RegBus]              reg2_i,
-        
+        input                   is_in_delayslot1_i,
+        input                   is_in_delayslot2_i,
         //massage to writeback
         output[`InstAddrBus]    inst1_addr_o,
         output[`InstAddrBus]    inst2_addr_o,
@@ -53,8 +54,9 @@ module mem(
         output  reg[`RegBus]            lo_o,
         output  reg                               whilo_o,
         
-        output[`RegBus]                 mem_addr_o
-      
+        output[`RegBus]                 mem_addr_o,
+        output                   is_in_delayslot1_o,
+        output                   is_in_delayslot2_o
 
     );
     

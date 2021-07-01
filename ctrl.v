@@ -25,7 +25,7 @@ module ctrl(
     input stallreq_from_ex,
     input stallreq_from_id,
     //input stallreq_from_dcache,
-    //input pred_flag,
+    input predict_flag,
     //input exception_flag,
     //input[4:0] exception_type,
     //input[`InstAddrBus] cp0_epc_i,
@@ -50,6 +50,12 @@ module ctrl(
             flush = `Noflush;
             flush_cause = `Exception;
             epc_o = `ZeroWord;
+        end else if(stallreq_from_ex == `Stop) begin
+            stall = 4'b0011;
+            flush = `Noflush;
+            flush_cause = `Exception;
+            epc_o = `ZeroWord;    
+            
         end else if(stallreq_from_id == `Stop)begin
             stall = 4'b0001;
             flush = `Noflush;
@@ -63,9 +69,6 @@ module ctrl(
             end
        end
             
-    
-    
-    
-   
+  
     
 endmodule

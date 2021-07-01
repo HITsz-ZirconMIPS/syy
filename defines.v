@@ -35,16 +35,29 @@
 `define ExceptionNotInduced 1'b0
 `define Flush   1'b1
 `define Noflush  1'b0
+`define FailedBranchPrediction 1'b1
 //inst buffer
     
 `define InstBufferSize 32           
 `define InstBufferSizeLog2 5            
 
-`define SIZE_OF_CORR_PACK  87:0     
+
 `define Valid    1'b1               
 `define Invalid   1'b0              
+`define ValidPrediction 1'b1
+`define InValidPrediction 1'b0
 
+`define SIZE_OF_CORR_PACK  87:0     
+`define SIZE_OF_BRANCH_INFO 66:0 //??
 
+`define CRR_PRED_DIR 87         //???
+`define CRR_PRED_TAR 86:55   //???
+
+//branch_type
+`define BTYPE_ABS 2'b00 //
+`define BTYPE_CAL 2'b01 //call
+`define BTYPE_RET 2'b10 //return 
+`define BTYPE_NUL 2'b11 //直接跳转
 
 //ָ��
 `define EXE_AND  6'b100100
@@ -264,7 +277,6 @@
 
 `define EXE_RES_NOP 3'b000
 
-`define EXE_RES_NOP 3'b000
 
 
 //ָ��洢��inst_rom

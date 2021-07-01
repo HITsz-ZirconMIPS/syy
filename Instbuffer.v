@@ -31,14 +31,17 @@ module Instbuffer(
     output  wire[`InstBus]  issue_inst2_o,
     output  wire[`InstAddrBus]  issue_inst1_addr_o,
     output  wire[`InstAddrBus]  issue_inst2_addr_o,
+    //output wire [`SIZE_OF_CORR_PACK] issue_bpu_corr1_o,
+    //output wire [`SIZE_OF_CORR_PACK] issue_bpu_corr2_o,
+    //output wire issue_ok_o,       //?
     
     //Fetch inst
-    input   wire[`InstBus]  ICache_inst1_i,
-    input   wire[`InstBus]  ICache_inst2_i,
-    input   wire[`InstAddrBus]  ICache_inst1_addr_i,
-    input   wire[`InstAddrBus]  ICache_inst2_addr_i, 
-    input   wire                ICache_inst1_valid_o,
-    input   wire                ICache_inst2_valid_o,
+        input   wire[`InstBus]  ICache_inst1_i,
+        input   wire[`InstBus]  ICache_inst2_i,
+        input   wire[`InstAddrBus]  ICache_inst1_addr_i,
+        input   wire[`InstAddrBus]  ICache_inst2_addr_i, 
+        input   wire                ICache_inst1_valid_o,
+        input   wire                ICache_inst2_valid_o,
     output  wire                buffer_full_o
     
   
@@ -101,7 +104,7 @@ module Instbuffer(
 ////////////////////////////////Output//////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
   /* always@(posedge clk) begin
-	 issue_inst1_o <= FIFO_data[head];
+	 issue_inst1_o <= FIFO_d`ata[head];
 	 issue_inst2_o <= FIFO_data[head+`InstBufferSizeLog2'h1];
 	 issue_inst1_addr_o <= FIFO_addr[head];
 	 issue_inst2_addr_o <= FIFO_addr[head+`InstBufferSizeLog2'h1];

@@ -56,7 +56,7 @@ module regfile(
     
     reg[`RegBus] regs[0:`RegNum-1] ; //寄存器需要初始化
     
-    initial begin   $readmemb("123.txt",regs); end
+    //initial begin   $readmemb("123.txt",regs); end
     
     
     assign reg31 = regs[31];
