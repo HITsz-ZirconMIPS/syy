@@ -23,9 +23,9 @@
 module mycpu(
         input   clk,
         input   rst,
-        //input[5:0]  int,      //?
+        input[5:0]  int,      
         output  flush,
-        //output  timer_int_o,   //??
+        output  timer_int_o,   
         
         
         //与I-Cache交流
@@ -52,8 +52,20 @@ module mycpu(
         output  wreq_to_dcache,
         output[`DataAddrBus]    waddr_to_dcache,
         output[`RegBus] wdata_to_dcache,
-        output[3:0] wsel_to_dcache
+        output[3:0] wsel_to_dcache,
              
+        
+        //debug 信号
+        output[`InstAddrBus]           commit_pc1,
+	    output                         commit_rf_wen1,
+	    output[4:0]                    commit_rf_waddr1,
+	    output[`RegBus]                commit_rf_wdata1,
+	    
+	    output[`InstAddrBus]           commit_pc2,
+	    output                         commit_rf_wen2,
+	    output[`RegAddrBus]            commit_rf_waddr2,
+	    output[`RegBus]                commit_rf_wdata2
+    
         
           
     );
@@ -63,6 +75,7 @@ module mycpu(
     wire flush_to_ibuffer;
     wire stallreq_from_ex;
     wire stallreq_from_id;
+    wire[`InstAddrBus]  epc_o;
     wire ibuffer_full;
     
     wire rf_we1;
@@ -85,6 +98,27 @@ module mycpu(
     wire    we_hilo;
     wire[`RegBus]   hi_o;
     wire[`RegBus]   lo_o;
+
+    wire        LLbit_i;
+    wire        LLbit_we;
+    wire        LLbit_o;
+    wire    cp0_we;
+    wire[2:0]   cp0_wsel;
+    wire[2:0]   cp0_rsel;
+    wire[`RegAddrBus] cp0_waddr;
+    wire[`RegAddrBus] cp0_raddr;
+    wire[`RegBus] cp0_wdata;
+    wire[`RegBus] cp0_rdata;
+    wire[`RegBus] cp0_badvaddr;
+    wire[`RegBus] cp0_count;
+    wire[`RegBus] cp0_compare;
+    wire[`RegBus] cp0_status;
+    wire[`RegBus] cp0_cause;
+    wire[`RegBus] cp0_epc;
+    wire[`RegBus] cp0_config;
+    wire[`RegBus] cp0_prid;
+    wire[`RegBus] cp0_ebase;
+    
     
     wire[`SIZE_OF_CORR_PACK] inst1_bpu_corr_i;
     wire[`SIZE_OF_CORR_PACK] inst2_bpu_corr_i;
@@ -120,14 +154,18 @@ module mycpu(
     wire[`RegBus]                   id_hi_o;
     wire[`RegBus]                   id_lo_o;       
     wire                            id_imm_fnl1_o;    
-    
+    wire[2:0]                       id_cp0_sel_o;
+    wire[`RegAddrBus]               id_cp0_addr_o;
     wire                            id_issue_mode_o;
     wire                            id_issued_o;
-    wire                            id_is_in_delayslot;
+    wire                            id_is_in_delayslot1_o;
+    wire                            id_is_in_delayslot2_o;
     wire                            next_inst_in_delayslot;
+    wire[31:0]                      id_exception_type1_o;
+    wire[31:0]                      id_exception_type2_o;
     
     
-           
+               
     
     // div                
     wire    signed_div;
@@ -156,7 +194,11 @@ module mycpu(
     wire[`RegBus]           ex_hi_i;
     wire[`RegBus]           ex_lo_i;
     wire[`RegBus]           ex_imm_fnl1_i;
-    wire                            ex_issue_i;
+    wire                    ex_issue_i;
+    wire[2:0]               ex_cp0_sel_i;
+    wire[`RegAddrBus]       ex_cp0_addr_i;
+    wire ex_is_in_delayslot1_i;
+    wire ex_is_in_delayslot2_i;
     
     wire[`InstAddrBus]  ex_inst1_addr_o;
     wire[`InstAddrBus]  ex_inst2_addr_o;
@@ -175,14 +217,22 @@ module mycpu(
     wire[`AluOpBus] ex_aluop1_o;
     wire[`RegBus]   ex_mem_addr_o;
     wire[`RegBus]   ex_reg2_o;
-    
+    wire    ex_LLbit_o;
+    wire    ex_LLbit_we_o;
     wire[`InstAddrBus]  ex_npc_actual_o;
     wire ex_branch_flag_o;
     wire ex_predict_flag_o;
     wire[`SIZE_OF_BRANCH_INFO] ex_branch_info_o;
     wire ex_issue_mode_o;
+    wire[2:0] ex_cp0_wsel_o;
+    wire ex_cp0_we_o;
+    wire[`RegAddrBus]   ex_cp0_waddr_o;
+    wire[`RegBus]       ex_cp0_wdata_o;
+    wire[31:0]          ex_exception_type1_o;
+    wire[31:0]          ex_exception_type2_o;
     wire ex_is_in_delayslot1_o;
     wire ex_is_in_delayslot2_o;
+    
     
     wire[`InstAddrBus]  mem_inst1_addr_i;
     wire[`InstAddrBus]  mem_inst2_addr_i;
@@ -198,6 +248,16 @@ module mycpu(
     wire[`AluOpBus] mem_aluop1_i;
     wire[`RegBus]   mem_mem_addr_i;
     wire[`RegBus]   mem_reg2_i;
+    wire            mem_LLbit_i;
+    wire            mem_LLbit_we_i;
+    wire[2:0]       mem_cp0_wsel_i;
+    wire            mem_cp0_we_i;
+    wire[`RegAddrBus]   mem_cp0_waddr_i;
+    wire[`RegBus]       mem_cp0_wdata_i;           
+    wire mem_is_in_delayslot1_i;
+    wire mem_is_in_delayslot2_i; 
+    wire[31:0]          mem_exception_type1_i;
+    wire[31:0]          mem_exception_type2_i;
     
     wire[`InstAddrBus]  mem_inst1_addr_o;
     wire[`InstAddrBus]  mem_inst2_addr_o;
@@ -211,26 +271,56 @@ module mycpu(
     wire[`RegBus]   mem_lo_o;
     wire    mem_whilo_o;
     wire[`RegBus]   mem_mem_addr_o;      
+    wire            mem_LLbit_o;
+    wire            mem_LLbit_we_o;
     wire mem_is_in_delayslot1_o;
-    wire mem_is_in_delayslot2_o;
+    wire mem_is_in_delayslot2_o; 
+    wire[2:0]       mem_cp0_wsel_o;
+    wire            mem_cp0_we_o;
+    wire[`RegAddrBus]   mem_cp0_waddr_o;
+    wire[`RegBus]       mem_cp0_wdata_o; 
+    wire[4:0]           mem_exception_type_o;
+    wire                mem_exception_flag_o;
+    wire                mem_exception_first_inst_o;
+    wire[`InstAddrBus]  lateset_epc;
+    wire[`InstAddrBus]  mem_ebase_o;
+    wire[`InstAddrBus]  commit_pc_o;
     
+//    wire[`RegAddrBus]        commit_waddr1_o;
+//    wire[`RegAddrBus]        commit_waddr2_o;  
+//    wire                     commit_we1_o;
+//    wire                     commit_we2_o;
+//    wire[`RegBus]           commit_wdata1_o;
+//    wire[`RegBus]           commit_wdata2_o;
+
+
+    // Debug信号
     
-    wire[`RegAddrBus]        commit_waddr1_o;
-    wire[`RegAddrBus]        commit_waddr2_o;  
-    wire                     commit_we1_o;
-    wire                     commit_we2_o;
-    wire[`RegBus]           commit_wdata1_o;
-    wire[`RegBus]           commit_wdata2_o;
+    assign commit_pc1 = commit_pc_o;
+    assign commit_rf_wen1 = rf_we1;
+    assign commit_rf_waddr1 = rf_waddr1;
+    assign commit_rf_wdata1 = rf_wdata1;
+    assign commit_pc2 = commit_pc_o + 4'h4;
+    assign commit_rf_wen2 = rf_we2;
+    assign commit_rf_waddr2 = rf_waddr2;
+    assign commit_rf_wdata2 = rf_wdata2;
+
+
     
     ctrl u_ctrl(
         .rst(rst),
         .stallreq_from_ex(stallreq_from_ex),
         .stallreq_from_id(stallreq_from_id),
+        .stallreq_from_dcache(stallreq_from_dcache),
         .predict_flag(ex_predict_flag_o),
+        .exception_flag(mem_exception_flag_o),
+        .exception_type(mem_exception_type_o),
+        .cp0_epc_i(latest_epc),
+        .ebase_i(mem_ebase_o),
         .stall(stall),
         .flush(flush),
         .flush_cause(flush_cause),
-       // .epc_o(epc_o),
+        .epc_o(epc_o),
         .flush_to_ibuffer(flush_to_ibuffer)
         );
         
@@ -244,6 +334,10 @@ module mycpu(
         .flush_cause(flush_cause),
         .stallreq_from_icache(stallreq_from_icache),
         .branch_flag(ex_branch_flag_o),
+        .npc_actual(ex_npc_actual_o),
+        .ex_pc(ex_inst1_addr_o),
+        .epc(epc_o),
+        .npc_from_cache(),
         .ibuffer_full(ibuffer_full),
         .pc(raddr_to_icache),
         .rreq_to_icache(rreq_to_icache)
@@ -282,7 +376,50 @@ module mycpu(
         .lo_o(lo_o)
         );
      
-     
+     LLbit_reg u_LLbit(
+        .clk(clk),
+        .rst(resetn),
+        .flush(flush),
+        .flush_cause(flush_cause),
+        .LLbit_i(LLbit_i),
+        .we(LLbit_we),
+        .LLbit_o(LLbit_o)
+        ); 
+ 
+ 
+    cp0_reg u_cp0(
+        .clk(clk),
+        .rst(rst),
+        .we_i(cp0_we),
+        .waddr_i(cp0_waddr),
+        .wsel_i(cp0_wsel),
+        .raddr_i(cp0_raddr),
+        .rsel_i(cp0_rsel),
+        .data_i(cp0_wdata),
+        .exception_type_i(mem_exception_type_o),
+        .exception_flag_i(mem_exception_flag_o),
+	    .exception_first_inst_i(mem_exception_first_inst_o),
+	    .inst1_addr_i(mem_inst1_addr_o),
+	    .inst2_addr_i(mem_inst2_addr_o),
+	    .mem_addr_i(mem_mem_addr_o),
+	    .is_in_delayslot1_i(mem_is_in_delayslot1_o),
+	    .is_in_delayslot2_i(mem_is_in_delayslot2_o),
+        .int_i(int),
+        .data_o(cp0_rdata),
+        .badvaddr_o(cp0_badvaddr),
+        .count_o(cp0_count),
+        .compare_o(cp0_compare),
+        .status_o(cp0_status),
+        .cause_o(cp0_cause),
+        .epc_o(cp0_epc),
+        .config_o(cp0_config),
+        .prid_o(cp0_prid),
+        .ebase_o(cp0_ebase),
+        .timer_int_o(timer_int_o)
+        );
+ 
+ 
+ 
  
     Instbuffer  u_buffer(
         .clk(clk),
@@ -296,7 +433,7 @@ module mycpu(
         .issue_inst2_addr_o(id_inst2_addr_i),
         //.issue_bpu_corr1_o(id_inst1_bpu_corr_i),
         //.issue_bpu_corr2_o(id_inst2_bpu_corr_i),
-        //.issue_ok_o(id_issue_en_i),
+        .issue_ok_o(id_issue_en_i),
         .ICache_inst1_i(inst1_from_icache),
         .ICache_inst2_i(inst2_from_icache),
         .ICache_inst1_addr_i(inst1_addr_from_icache),
@@ -345,7 +482,6 @@ module mycpu(
         .commit_we2_i(rf_we2),
         .commit_wdata1_i(rf_wdata1),
         .commit_wdata2_i(rf_wdata2),
-
         .ex_aluop1_i(ex_aluop1_o),
         .hi_i(hi_o),
         .lo_i(lo_o),
@@ -358,6 +494,7 @@ module mycpu(
         .commit_hi_i(hi_i),
         .commit_lo_i(lo_i),
         .commit_whilo_i(we_hilo),  
+        
         .inst1_addr_o(id_inst1_addr_o),
         .inst2_addr_o(id_inst2_addr_o),
         .inst1_bpu_corr_o(id_inst1_bpu_corr_o),
@@ -384,8 +521,10 @@ module mycpu(
         .is_in_delayslot2_o(id_is_in_delayslot2_o),
         .imm_ex_o(id_imm_fnl1_o),
         .ninst_in_delayslot(next_inst_in_delayslot),
-                                              
-                                
+        .cp0_addr_o(id_cp0_addr_o),
+        .cp0_sel_o(id_cp0_sel_o),                                      
+        .exception_type1(id_exception_type1_o),
+        .exception_type2(id_exception_type2_o),                        
         .issue_o(id_issue_mode_o),
         .issued_o(id_issued_o),
         .stallreq_from_id(stallreq_from_id)
@@ -423,6 +562,11 @@ module mycpu(
             . next_inst_in_delayslot_i(next_inst_in_delayslot),
             . is_in_delayslot1_i(id_is_in_delayslot1_o),
             . is_in_delayslot2_i(id_is_in_delayslot2_o),
+            . cp0_sel_i(id_cp0_sel_o),
+            . cp0_addr_i(id_cp0_addr_o),
+            . exception_type1_i(id_exception_type1_o),
+            . exception_type2_i(id_exception_type2_o),
+                        
             . inst1_addr_o(ex_inst1_addr_i),                    
             . inst2_addr_o(ex_inst2_addr_i),                         
             .  aluop1_o(ex_aluop1_i),                       
@@ -443,8 +587,12 @@ module mycpu(
             .     issue_o(ex_issue_i),
             .   next_inst_in_delayslot_o(ex_is_in_delayslot_i),      //??  
             .   is_in_delayslot1_o(ex_is_in_delayslot1_i),         
-            .   is_in_delayslot2_o(ex_is_in_delayslot2_i)         
-                 
+            .   is_in_delayslot2_o(ex_is_in_delayslot2_i)  ,
+            .   cp0_sel_o(ex_cp0_sel_i),
+            .   cp0_addr_o(ex_cp0_addr_i),
+            .   exception_type1_o(ex_exception_type1_i),
+            .   exception_type2_o(ex_exception_type2_i)
+            
                  );              
                 
         div  u_div(
@@ -489,6 +637,26 @@ ex_top  u_ex_top(
             . issue_i(ex_issue_i),    
             . is_in_delayslot1_i(ex_is_in_delayslot1_i),
             . is_in_delayslot2_i(ex_is_in_delayslot2_i),       
+            . LLbit_i(LLbit_o),
+            . mem_LLbit_i(mem_LLbit_o),
+            . mem_LLbit_we_i(mem_LLbit_we_o),
+            . commit_LLbit_i(LLbit_i),
+            . commit_LLbit_we_i(LLbit_we),
+            . cp0_sel_i(ex_cp0_sel_i),
+            . cp0_addr_i(ex_cp0_addr_i),
+            . cp0_data_i(cp0_rdata),
+            . mem_cp0_wsel_i(mem_cp0_wsel_o),
+            .mem_cp0_we_i(mem_cp0_we_o),
+            .mem_cp0_waddr_i(mem_cp0_waddr_o),
+            .mem_cp0_wdata_i(mem_cp0_wdata_o),
+            .commit_cp0_wsel_i(cp0_wsel),
+	        .commit_cp0_we_i(cp0_we),
+	        .commit_cp0_waddr_i(cp0_waddr),
+	        .commit_cp0_wdata_i(cp0_wdata),
+	        .mem_exception_flag_i(mem_exception_flag_o),
+            . exception_type1_i(id_exception_type1_o),
+            . exception_type2_i(id_exception_type2_o),
+            
             . inst1_addr_o(ex_inst1_addr_o),                    
             . inst2_addr_o(ex_inst2_addr_o),        
             . inst1_bpu_corr_o(ex_inst1_bpu_corr_o),
@@ -502,8 +670,13 @@ ex_top  u_ex_top(
             .hi_o(ex_hi_o),
             .lo_o(ex_lo_o),
             .whilo_o(ex_whilo_o),
+            .npc_actual(ex_npc_actual_o),
+	        .branch_flag_actual(ex_branch_flag_o),
+	        .predict_flag(ex_predict_flag_o),
+	        .branch_info(ex_branch_info_o),
             .issue_mode(ex_issue_mode_o),
-            
+            .is_in_delayslot1_o(ex_is_in_delayslot1_o),
+            .is_in_delayslot2_o(ex_is_in_delayslot2_o),            
             .div_opdata1_o(div_opdata1),
             .div_opdata2_o(div_opdata2),
             .div_start_o(div_start),
@@ -511,7 +684,24 @@ ex_top  u_ex_top(
             .aluop1_o(ex_aluop1_o),
             .mem_addr_o(ex_mem_addr_o),
             .reg2_o(ex_reg2_o),
-           // .mem_raddr_o(raddr_to_dcache),
+            
+            .mem_raddr_o(raddr_to_dcache),
+            .mem_waddr_o(waddr_to_dcache),
+	        .mem_we_o(wreq_to_dcache),
+	        .mem_sel_o(wsel_to_dcache),
+	        .mem_data_o(wdata_to_dcache),
+	        .mem_re_o(rreq_to_dcache),
+	        .LLbit_o(ex_LLbit_o),
+	        .LLbit_we_o(ex_LLbit_we_o),
+            .cp0_rsel_o(cp0_rsel),
+            .cp0_raddr_o(cp0_raddr),
+            .cp0_wsel_o(ex_cp0_wsel_O),
+            .cp0_we_o(ex_cp0_we_o),
+            .cp0_waddr_o(ex_cp0_waddr_o),
+            .cp0_wdata_o(wx_cp0_wdata_o),
+            . exception_type1_o(ex_exception_type1_o),
+            . exception_type2_o(ex_exception_type2_o),         
+           
             .stallreq(stallreq_from_ex)            
             
     );                    
@@ -526,7 +716,7 @@ ex_top  u_ex_top(
             .inst2_addr_i(ex_inst2_addr_o),
             . inst1_bpu_corr_i(ex_inst1_bpu_corr_o),
             . inst2_bpu_corr_i(ex_inst2_bpu_corr_o),                 
-            
+            .branch_info_i(ex_branch_info_o),
             .waddr1_i(ex_waddr1_i),
             .waddr2_i(ex_waddr2_i),
             .we1_i(ex_we1_o),
@@ -539,8 +729,16 @@ ex_top  u_ex_top(
             .aluop1_i(ex_aluop1_o),
             .mem_addr_i(ex_mem_addr_o),
             .reg2_i(ex_reg2_o),
+            .LLbit_i(ex_LLbit_o),
+            .LLbit_we_i(ex_LLbit_we_o),
+            .cp0_wsel_i(ex_cp0_wsel_o),
+            .cp0_we_i(ex_cp0_we_o),
+            .cp0_waddr_i(ex_cp0_waddr_o),
+            .cp0_wdata_i(ex_cp0_wdata_o),
             .is_in_delayslot1_i(ex_is_in_delayslot1_o),
             .is_in_delayslot2_i(ex_is_in_delayslot2_o),
+            .exception_type1_i(ex_exception_type1_o),
+            .exception_type2_i(ex_exception_type2_o),
             . inst1_addr_o(mem_inst1_addr_i),
             . inst2_addr_o(mem_inst2_addr_i),
             . inst1_bpu_corr_o(mem_inst1_bpu_corr_i),
@@ -557,10 +755,18 @@ ex_top  u_ex_top(
             .whilo_o(mem_whilo_i),
             .aluop1_o(mem_aluop1_i),
             .mem_addr_o(mem_mem_addr_i),
-            .reg2_o(mem_reg2_i),        
+            .reg2_o(mem_reg2_i),       
+            .LLbit_o(mem_LLbit_i),
+            .LLbit_we_o(mem_LLbit_we_i),
+            .cp0_wsel_o(mem_cp0_wsel_i),
+            .cp0_we_o(mem_cp0_we_i),
+            .cp0_waddr_o(mem_cp0_waddr_i),
+            .cp0_wdata_o(mem_cp0_wdata_i),
             .is_in_delayslot1_o(mem_is_in_delayslot1_i),
-            .is_in_delayslot2_o(mem_is_in_delayslot2_i)
-               
+            .is_in_delayslot2_o(mem_is_in_delayslot2_i),
+            .exception_type1_o(mem_exception_type1_i),
+            .exception_type2_o(mem_exception_type2_i)   
+        
         
     );
  
@@ -581,10 +787,24 @@ ex_top  u_ex_top(
         .aluop1_i(mem_aluop1_i),
         .mem_addr_i(mem_mem_addr_i),
         .reg2_i(mem_reg2_i),
-        
+        .LLbit_i(mem_LLbit_i),
+        .LLbit_we_i(mem_LLbit_we_i),
         .is_in_delayslot1_i(mem_is_in_delayslot1_i),
         .is_in_delayslot2_i(mem_is_in_delayslot2_i),
-        
+        .cp0_wsel_i(mem_cp0_wsel_i),
+        .cp0_we_i(mem_cp0_we_i),
+        .cp0_waddr_i(mem_cp0_waddr_i),
+        .cp0_wdata_i(mem_cp0_wdata_i),
+        .exception_type1_i(mem_exception_type1_i),
+        .exception_type2_i(mem_exception_type2_i),
+        .cp0_status_i(cp0_status),
+        .cp0_cause_i(cp0_cause),
+        .cp0_epc_i(cp0_epc),
+        .cp0_ebase_i(cp0_ebase),
+        .commit_cp0_wsel_i(cp0_wsel),
+        .commit_cp0_we_i(cp0_we),
+        .commit_cp0_waddr_i(cp0_waddr),
+        .commit_cp0_wdata_i(cp0_wdata),
         .inst1_addr_o(mem_inst1_addr_o),
         .inst2_addr_o(mem_inst2_addr_o),
         .waddr1_o(mem_waddr1_o),
@@ -598,9 +818,21 @@ ex_top  u_ex_top(
         .whilo_o(mem_whilo_o),
 
         .mem_addr_o(mem_mem_addr_o),
- 
+        .LLbit_o(mem_LLbit_o),
+        .LLbit_we_o(mem_LLbit_we_o),
         .is_in_delayslot1_o(mem_is_in_delayslot1_o),
-        .is_in_delayslot2_o(mem_is_in_delayslot2_o)
+        .is_in_delayslot2_o(mem_is_in_delayslot2_o),
+        .cp0_wsel_o(mem_cp0_wsel_o),
+        .cp0_we_o(mem_cp0_we_o),
+        .cp0_waddr_o(mem_cp0_waddr_o),
+        .cp0_wdata_o(mem_cp0_wdata_o),
+        .exception_type_o(mem_exception_type_o),
+        .exception_flag_o(mem_exception_flag_o),
+        .exception_first_inst_o(mem_exception_first_inst_o),
+        .cp0_epc_o(latest_epc),
+        .cp0_ebase_o(mem_ebase_o)
+        
+        
  );
  
     commit  u_commit(
@@ -619,7 +851,13 @@ ex_top  u_ex_top(
         .hi_i(mem_hi_o),
         .lo_i(mem_lo_o),
         .whilo_i(mem_whilo_o),
-        
+        .LLbit_i(mem_LLbit_o),
+        .LLbit_we_i(mem_LLbit_we_o),
+        .cp0_wsel_i(mem_cp0_wsel_o),
+        .cp0_we_i(mem_cp0_we_o),
+        .cp0_waddr_i(mem_cp0_waddr_o),
+        .cp0_wdata_i(mem_cp0_wdata_o),
+        .exception_first_inst_i(mem_exception_first_inst_o),
         .pc_o(commit_pc_o),
         .waddr1_o(rf_waddr1),
         .waddr2_o(rf_waddr2),
@@ -629,7 +867,13 @@ ex_top  u_ex_top(
         .wdata2_o(rf_wdata2),
         .hi_o(hi_i),
         .lo_o(lo_i),
-        .whilo_o(we_hilo)
+        .whilo_o(we_hilo),
+        .LLbit_o(LLbit_i),
+        .LLbit_we_o(LLbit_we),
+        .cp0_wsel_o(cp0_wsel),
+        .cp0_we_o(cp0_we),
+        .cp0_waddr_o(cp0_waddr),
+        .cp0_wdata_o(cp0_wdata)
         
         
         );

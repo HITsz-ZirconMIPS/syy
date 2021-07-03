@@ -61,8 +61,8 @@ always @(posedge clk)   pc<=npc;
 always@(*) begin
     if(rreq_to_icache==  `ChipDisable) begin
         npc = 32'hbfc00000;
-    end else if(stall[0]==`Stop)begin
-         npc = pc;    
+    end else if(flush == `Flush && flush_cause == `Exception)begin
+         npc = epc;    
     end else if(flush == `Flush && flush_cause == `FailedBranchPrediction && branch_flag == `Branch) begin
          npc = npc_actual;  
     end else if(flush == `Flush && flush_cause == `FailedBranchPrediction && branch_flag == `NotBranch) begin

@@ -26,14 +26,14 @@ module Instbuffer(
     input   flush,
     //issue
     input   wire    issue_mode_i,   //issue mode of issue stage
-    input   wire    issue_i,        //whether issue stage has issued inst    
+    input   wire    issue_i,        //whether issue stage has issued inst    发射阶段是否已经发出了指令
     output  wire[`InstBus]  issue_inst1_o, 
     output  wire[`InstBus]  issue_inst2_o,
     output  wire[`InstAddrBus]  issue_inst1_addr_o,
     output  wire[`InstAddrBus]  issue_inst2_addr_o,
     //output wire [`SIZE_OF_CORR_PACK] issue_bpu_corr1_o,
     //output wire [`SIZE_OF_CORR_PACK] issue_bpu_corr2_o,
-    //output wire issue_ok_o,       //?
+    output wire issue_ok_o,       //?
     
     //Fetch inst
         input   wire[`InstBus]  ICache_inst1_i,
@@ -42,7 +42,7 @@ module Instbuffer(
         input   wire[`InstAddrBus]  ICache_inst2_addr_i, 
         input   wire                ICache_inst1_valid_o,
         input   wire                ICache_inst2_valid_o,
-    output  wire                buffer_full_o
+        output  wire                buffer_full_o
     
   
     );
@@ -127,7 +127,7 @@ module Instbuffer(
 	
     assign issue_bpu_corr1_o = FIFO_bpu_corr[head];
     assign issue_bpu_corr2_o = FIFO_bpu_corr[head+`InstBufferSizeLog2'h1];
-	//assign issue_ok_o = FIFO_valid[head+`InstBufferSizeLog2'h2];
+	assign issue_ok_o = FIFO_valid[head+`InstBufferSizeLog2'h2];
     //full
 	assign buffer_full_o = FIFO_valid[tail+`InstBufferSizeLog2'h5];
 

@@ -34,15 +34,12 @@ module ex_sub(
         
         input[`RegBus]          hi_i,
         input[`RegBus]          lo_i,
+        input[31:0]             exception_type_i,
         
-        input                                     mul_ready_i,
-        input[`DoubleRegBus]    mul_i,
         //input[`DoubleRegBus]    div_result_i,
         //input                                    div_ready_i,
         
-        input[`RegBus]                  imm_i,
-        input[`InstAddrBus]             pc_i,
-        
+
         
         output  reg[`RegAddrBus]     waddr_o,
         output  reg                                 we_o,
@@ -60,15 +57,16 @@ module ex_sub(
         
         output[`RegBus]                    mem_addr_o,
         
-        output  reg                               mem_raddr_o,
-        output  reg                               mem_waddr_o,
-        output  reg                               mem_we_o,
-        output  reg                               mem_sel_o,
-        output  reg                               mem_data_o,
-        output  reg                               mem_re_o,
+//        output  reg                               mem_raddr_o,
+//        output  reg                               mem_waddr_o,
+//        output  reg                               mem_we_o,
+//        output  reg                               mem_sel_o,
+//        output  reg                               mem_data_o,
+//        output  reg                               mem_re_o,
         
-        output                                       stallreq 
-         
+//        output                                       stallreq 
+
+          output [31:0]                         exception_type_o         
     );
         
         
@@ -95,7 +93,7 @@ module ex_sub(
    mult_gen_0 mul(.A(reg1_i),.B(reg2_i),.P(mulres));
    mult_gen_0_1 mul_u(.A(reg1_i),.B(reg2_i),.P(mulres_u));  //无符号乘法     
    
-        assign mem_addr_o = reg1_i+imm_i;
+//        assign mem_addr_o = reg1_i+imm_i;
         
    
 always @(*) begin
@@ -185,11 +183,11 @@ end
 wire [`RegBus]  reg2_i_mux;
 assign reg2_i_mux =((aluop_i ==`EXE_SUB_OP) || 
                     (aluop_i ==`EXE_SUBU_OP)||
-                    (aluop_i ==`EXE_SLT_OP) ||
+                    (aluop_i ==`EXE_SLT_OP))/* ||
                     (aluop_i ==`EXE_TLT_OP) ||
-                    (aluop_i ==`EXE_TLTI_OP)||
-                    (aluop_i ==`EXE_TGE_OP) ||
-                    (aluop_i ==`EXE_TGEI_OP)) ?
+                    //(aluop_i ==`EXE_TLTI_OP)||
+                    //(aluop_i ==`EXE_TGE_OP) ||
+                    (aluop_i ==`EXE_TGEI_OP))*/ ?
                     (~reg2_i)+1 : reg2_i;
                     
 assign result_sum = reg1_i +reg2_i_mux;
@@ -198,11 +196,11 @@ assign result_sum = reg1_i +reg2_i_mux;
 assign ov_sum = ((!reg1_i[31] && !reg2_i_mux[31] && result_sum[31])
                 || (reg1_i[31] && reg2_i_mux[31] && !result_sum[31]));
 
-assign reg1_lt_reg2 = ((aluop_i == `EXE_SLT_OP) ||
+assign reg1_lt_reg2 = ((aluop_i == `EXE_SLT_OP) /*||
                         (aluop_i ==`EXE_TLT_OP) ||
                         (aluop_i ==`EXE_TLTI_OP)||
                         (aluop_i ==`EXE_TGE_OP) ||
-                        (aluop_i ==`EXE_TGEI_OP)) ?
+                        (aluop_i ==`EXE_TGEI_OP)*/) ?
                         ((reg1_i[31] && !reg2_i[31])) ||
                         (!reg1_i[31] && !reg2_i[31] && result_sum[31]) ||
                         (reg1_i[31] && reg2_i[31] && result_sum[31]) 

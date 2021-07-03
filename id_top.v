@@ -114,6 +114,11 @@ module id_top(
         output  reg[`RegBus]            lo_o,
         
         output      ninst_in_delayslot,     //next inst in delayslot 用于异常判断
+        
+        output[`RegAddrBus]         cp0_addr_o,
+        output[2:0]                 cp0_sel_o, 
+        output[31:0]                exception_type1,
+        output[31:0]                exception_type2,
        
         output reg                             issue_o,
         output  reg                             issued_o,
@@ -155,7 +160,17 @@ module id_top(
     assign next_inst_in_delayslot = (issue_o == `SingleIssue)? next_inst_in_delayslot : `NotInDelaySlot;
     assign is_in_delayslot1_o = is_in_delayslot_i;
     assign is_in_delayslot2_o = (issue_o == `DualIssue)? id2_inst_in_delayslot:`NotInDelaySlot;
-    //assign load_dependency = 
+    assign load_dependency = (reg12_load_dependency == `LoadDependent || reg34_load_dependency == `LoadDependent) ? `LoadDependent : `LoadIndependent; 
+    
+    assign is_load =   (ex_aluop1_i == `EXE_LB_OP) ||
+                      (ex_aluop1_i == `EXE_LBU_OP)||
+                      (ex_aluop1_i == `EXE_LH_OP) ||
+                      (ex_aluop1_i == `EXE_LHU_OP)||
+                      (ex_aluop1_i == `EXE_LW_OP) ||
+                      (ex_aluop1_i == `EXE_LWR_OP)||
+                      (ex_aluop1_i == `EXE_LWL_OP)||
+                      (ex_aluop1_i == `EXE_LL_OP) ||
+                      (ex_aluop1_i == `EXE_SC_OP)  ;
     
     assign reg1_raddr_o = (rst==`RstEnable) ? `NOPRegAddr : inst1_i[25:21];
     assign reg2_raddr_o = (rst==`RstEnable) ? `NOPRegAddr : inst1_i[20:16];
@@ -183,23 +198,32 @@ module id_top(
         .mem_wdata1_i(mem_wdata1_i),
         .mem_wdata2_i(mem_wdata2_i),
         
+        .is_load(is_load),
+        .is_div(is_div1),
+        .is_jb(is_jb1),
+        .is_ls(is_ls1),
+        .is_cp0(is_cp01),
+        
         
         .aluop_o(aluop1_o),
         .alusel_o(alusel1_o),
         .reg1_o(reg1_o),
         .reg2_o(reg2_o),
-        .reg1_read_o(),
-        .reg2_read_o(),
+        .reg1_read_o(), //??
+        .reg2_read_o(), //??
         .waddr_o(waddr1_o),
         .we_o(we1_o),
+        .cp0_addr_o(cp0_addr_o),
+        .cp0_sel_o(cp0_sel_o),
+                
         
         .next_inst_in_delayslot(next_inst_in_delayslot),
         .hilo_re(hilo_re1),
         .hilo_we(hilo_we1),
         
-        
-        .imm_fnl_o(imm_ex_o)      //  ??
-        
+        .exception_type(exception_type1),
+        .imm_fnl_o(imm_ex_o) ,     //  ??
+        .load_dependency(reg12_load_dependency)
         );    
         
     id   u_id2(
@@ -224,6 +248,11 @@ module id_top(
         .mem_wdata1_i(mem_wdata1_i),
         .mem_wdata2_i(mem_wdata2_i),
         
+        .is_load(is_load),
+        .is_div(is_div2),
+        .is_jb(is_jb2),
+        .is_ls(is_ls2),
+        .is_cp0(is_cp02),
         
         .aluop_o(id_sub_2_aluop_o),
         .alusel_o(id_sub_2_alusel_o),
@@ -233,12 +262,16 @@ module id_top(
         .reg2_read_o(reg4_read_o),
         .waddr_o(id_sub_2_waddr_o),
         .we_o(id_sub_2_we_o),
-        
+        .cp0_addr_o(),
+        .cp0_sel_o(),
+                     
         .next_inst_in_delayslot(),
         .hilo_re(hilo_re2),
         .hilo_we(hilo_we2),
         
-        .imm_fnl_o()
+        .exception_type(exception_type2),
+        .imm_fnl_o(),
+        .load_dependency(reg34_load_dependency)
         
         );
            
@@ -268,9 +301,11 @@ always @(*) begin   //发射仲裁 使当前两条指令只发射第一条 清�
  assign reg4_o = id_reg4_o;
  assign waddr2_o = id_waddr2_o;
  assign we2_o = id_we2_o;
- 
+ assign exception_type2 = id_exception_type2_o;
  assign inst1_addr_o = inst1_addr_i;
  assign inst2_addr_o = (issue_o==`SingleIssue) ? `ZeroWord : inst2_addr_i;
+ assign inst1_bpu_corr_o = inst1_bpu_corr_i;
+ assign inst2_bpu_corr_o = (issue_o==`SingleIssue) ? {1'b0,inst2_bpu_corr_i[86:0]} : inst2_bpu_corr_i;  //????
  
  
  always @(*) begin
@@ -311,12 +346,14 @@ always @(*) begin   //缺少其他逻辑判断，比如延迟槽
         issued_o = 1'b0;
         stallreq_from_id = `NoStop;
     end else if(is_in_delayslot_i)begin
-        issue_o = 1'b1;
-        stallreq_from_id = `NoStop;
-        
-    end else begin      //！！！ 这样才是正确的？ 感觉他们写错了
         issued_o = 1'b1;
         stallreq_from_id = `NoStop;
+    end else if(issue_en_i == 1'b1 && load_dependency == `LoadIndependent) begin  //此时是正常情况
+        issued_o = 1'b1;
+        stallreq_from_id = `NoStop;
+    end else begin      //！！！ 这样才是正确的？ 
+        issued_o = 1'b0;   //0？？？
+        stallreq_from_id = `Stop;
         end     
 end 
  

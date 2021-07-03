@@ -41,6 +41,7 @@ module id(
     input                                  mem_we2_i,
     input[`RegBus]               mem_wdata1_i,
     input[`RegBus]               mem_wdata2_i,
+    
     input[`RegAddrBus]          commit_waddr1_i,
     input[`RegAddrBus]          commit_waddr2_i,
     input                       commit_we1_i,
@@ -69,10 +70,14 @@ module id(
     output reg                      we_o,
     output reg              next_inst_in_delayslot,
     
+    output reg[`RegAddrBus]     cp0_addr_o,
+    output reg[2:0]             cp0_sel_o,
+    
     output  reg             hilo_re,
     output  reg             hilo_we,
     //生成的最终立即数    
     output[`RegBus]         imm_fnl_o ,
+    output[31:0]            exception_type,
         
     output                  load_dependency    
     );
@@ -90,8 +95,18 @@ module id(
     
     
     reg[`RegBus]    imm_ex;
-    
     reg instvalid;
+    reg reg1_load_dependency;
+    reg reg2_load_dependency;
+    reg syscall_exception;
+    reg eret_exception;
+    reg break_exception;
+    wire adel_exception;
+    
+    assign load_dependency = (reg1_load_dependency == `LoadDependent||reg2_load_dependency == `LoadDependent) ? `LoadDependent:`LoadIndependent;
+    assign adel_exception = pc_i[1:0] != 2'b0;
+    assign exception_type = {17'b0,eret_exception,3'b0,instvalid,break_exception,syscall_exception,3'b0,adel_exception,4'b0};
+    
     
     always@(*) begin
         if(rst == `RstEnable)   begin
@@ -112,9 +127,12 @@ module id(
             is_jb = 1'b0;
             is_ls = 1'b0;
             is_cp0 =1'b0;
-            
-            
-            
+            cp0_sel_o = 3'b000;
+            cp0_addr_o = 5'b00000;
+            syscall_exception = 1'b0;
+            eret_exception = 1'b0;
+            break_exception = 1'b0;
+                        
         end else begin    
             aluop_o = `EXE_NOP_OP;
             alusel_o = `EXE_RES_NOP;
@@ -133,8 +151,12 @@ module id(
             is_jb = 1'b0;
             is_ls = 1'b0;
             is_cp0 = 1'b0;
-            
-            
+            cp0_sel_o = 3'b000;
+            cp0_addr_o = 5'b00000;
+            syscall_exception = 1'b0;
+            eret_exception = 1'b0;
+            break_exception = 1'b0;
+
         case(op)
             `EXE_SPECIAL_INST:  begin
                 if(shamt == 5'b00000)begin
@@ -366,10 +388,86 @@ module id(
                             default:    ;
                         endcase
                    end
-                   
+              case (funct)
+		          `EXE_TEQ: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_TEQ_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadEnable;
+		              reg2_read_o = `ReadEnable;
+		              instvalid = `InstValid;
+                      is_cp0 = 1'b1;
+		          end
+		          `EXE_TGE: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_TGE_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadEnable;
+		              reg2_read_o = `ReadEnable;
+		              instvalid = `InstValid;
+                      is_cp0 = 1'b1;
+		          end
+		          `EXE_TGEU: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_TGEU_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadEnable;
+		              reg2_read_o = `ReadEnable;
+		              instvalid = `InstValid;
+                      is_cp0 = 1'b1;
+		          end
+		          `EXE_TLT: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_TLT_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadEnable;
+		              reg2_read_o = `ReadEnable;
+		              instvalid = `InstValid;
+                      is_cp0 = 1'b1;
+		          end
+		          `EXE_TLTU: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_TLTU_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadEnable;
+		              reg2_read_o = `ReadEnable;
+		              instvalid = `InstValid;
+                      is_cp0 = 1'b1;
+		          end
+		          `EXE_TNE: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_TNE_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadEnable;
+		              reg2_read_o = `ReadEnable;
+		              instvalid = `InstValid;
+                      is_cp0 = 1'b1;
+		          end
+		          `EXE_BREAK: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_BREAK_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadDisable;
+		              reg2_read_o = `ReadDisable;
+		              instvalid = `InstValid;
+		              break_exception = 1'b1;
+                      is_cp0 = 1'b1;
+		          end
+		          `EXE_SYSCALL: begin
+		              we_o = `WriteDisable;
+		              aluop_o = `EXE_SYSCALL_OP;
+		              alusel_o = `EXE_RES_NOP;
+		              reg1_read_o = `ReadDisable;
+		              reg2_read_o = `ReadDisable;
+		              instvalid = `InstValid;
+		              syscall_exception = 1'b1;
+                      is_cp0 = 1'b1;
+		          end
+		          default: ;
+		      endcase     
                    
           
-          if(rs == 5'b00000)  begin
+            if(rs == 5'b00000)  begin
                 case(funct)
                     `EXE_SLL:   begin
                         we_o = `WriteEnable;
@@ -567,6 +665,156 @@ module id(
                 is_jb = 1'b1;
                 next_inst_in_delayslot = `InDelaySlot;
             end
+            `EXE_LB: begin
+              aluop_o = `EXE_LB_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadDisable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_LBU: begin
+              aluop_o = `EXE_LBU_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadDisable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_LH: begin
+              aluop_o = `EXE_LH_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadDisable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_LHU: begin
+              aluop_o = `EXE_LHU_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadDisable;
+              imm_ex = inst_i[20:16]; 
+              is_ls = 1'b1;
+          end
+          `EXE_LW: begin
+              aluop_o = `EXE_LW_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadDisable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_LWL: begin
+              aluop_o = `EXE_LWL_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_LWR: begin
+              aluop_o = `EXE_LWR_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_SB: begin
+              aluop_o = `EXE_SB_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              we_o = `WriteDisable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_SH: begin
+              aluop_o = `EXE_SH_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              we_o = `WriteDisable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_SW: begin
+              aluop_o = `EXE_SW_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              we_o = `WriteDisable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_SWL: begin
+              aluop_o = `EXE_SWL_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              we_o = `WriteDisable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_SWR: begin
+              aluop_o = `EXE_SWR_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              we_o = `WriteDisable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_LL: begin
+              aluop_o = `EXE_LL_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadDisable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+          `EXE_SC: begin
+              aluop_o = `EXE_SC_OP;
+              alusel_o = `EXE_RES_LOAD_STORE;
+              waddr_o = rt;
+              we_o = `WriteEnable;
+              instvalid = `InstValid;
+              reg1_read_o = `ReadEnable;
+              reg2_read_o = `ReadEnable;
+              imm_ex = inst_i[20:16];
+              is_ls = 1'b1;
+          end
+            
             
             
             `EXE_REGIMM_INST: begin
@@ -615,11 +863,71 @@ module id(
                         imm_ex = {{14{imm[15]}},imm,2'h0};
                         is_jb = 1'b1;  
                         waddr_o = 5'b11111;
-   
                     end
-                    default: begin
-                        
-                    end
+                  `EXE_TEQI: begin
+                      aluop_o = `EXE_TEQI_OP;
+                      alusel_o = `EXE_RES_NOP;
+                      we_o = `WriteDisable;
+                      instvalid = `InstValid;
+                      reg1_read_o = `ReadEnable;
+                      reg2_read_o = `ReadDisable;
+                      imm_ex = {{16{inst_i[15]}}, inst_i[15:0]};
+                      is_cp0 = 1'b1;
+                  end
+                  `EXE_TGEI: begin
+                      aluop_o = `EXE_TGEI_OP;
+                      alusel_o = `EXE_RES_NOP;
+                      we_o = `WriteDisable;
+                      instvalid = `InstValid;
+                      reg1_read_o = `ReadEnable;
+                      reg2_read_o = `ReadDisable;
+                      imm_ex = {{16{inst_i[15]}}, inst_i[15:0]};
+                      is_cp0 = 1'b1;
+                  end
+                  `EXE_TGEIU: begin
+                      aluop_o = `EXE_TGEIU_OP;
+                      alusel_o = `EXE_RES_NOP;
+                      we_o = `WriteDisable;
+                      instvalid = `InstValid;
+                      reg1_read_o = `ReadEnable;
+                      reg2_read_o = `ReadDisable;
+                      imm_ex = {{16{inst_i[15]}}, inst_i[15:0]};
+                      is_cp0 = 1'b1;
+                  end
+                  `EXE_TLTI: begin
+                      aluop_o = `EXE_TLTI_OP;
+                      alusel_o = `EXE_RES_NOP;
+                      we_o = `WriteDisable;
+                      instvalid = `InstValid;
+                      reg1_read_o = `ReadEnable;
+                      reg2_read_o = `ReadDisable;
+                      imm_ex = {{16{inst_i[15]}}, inst_i[15:0]};
+                      is_cp0 = 1'b1;
+                  end
+                  `EXE_TLTIU: begin
+                      aluop_o = `EXE_TLTIU_OP;
+                      alusel_o = `EXE_RES_NOP;
+                      we_o = `WriteDisable;
+                      instvalid = `InstValid;
+                      reg1_read_o = `ReadEnable;
+                      reg2_read_o = `ReadDisable;
+                      imm_ex = {{16{inst_i[15]}}, inst_i[15:0]};
+                      is_cp0 = 1'b1;
+                  end
+                  `EXE_TNEI: begin
+                      aluop_o = `EXE_TNEI_OP;
+                      alusel_o = `EXE_RES_NOP;
+                      we_o = `WriteDisable;
+                      instvalid = `InstValid;
+                      reg1_read_o = `ReadEnable;
+                      reg2_read_o = `ReadDisable;
+                      imm_ex = {{16{inst_i[15]}}, inst_i[15:0]};
+                      is_cp0 = 1'b1;
+                  end  
+                    
+                    
+                    default: ;                      
+                    
                 endcase
             end
             
@@ -649,26 +957,63 @@ module id(
                         reg2_read_o =1'b1;
                         instvalid =`InstValid;
                     end 
-            
-            
-                    default:begin                        
-                    end 
-                endcase     //end case special2_inst 
-            end
-            
-        default: ;
-        endcase
-       
-    end
-end  
+                    
+                        default: begin
+                            end
+                        endcase
+                    end        
+                    
+                    `EXE_COP0: begin
+                        if(inst_i[25:21] == 5'b00000 && inst_i[10:3] == 8'b00000000) begin
+                            aluop_o = `EXE_MFC0_OP;
+                            alusel_o = `EXE_RES_MOVE;
+                            waddr_o = rt;
+                            we_o = `WriteEnable;
+			                instvalid = `InstValid;
+                            reg1_read_o = `ReadDisable;
+                            reg2_read_o = `ReadDisable;
+                            cp0_sel_o = inst_i[2:0];
+                            cp0_addr_o = rd;
+                            is_cp0 = 1'b1;
+		                end else if(inst_i[25:21] == 5'b00100 && inst_i[10:3] == 8'b00000000) begin
+                            aluop_o = `EXE_MTC0_OP;
+                            alusel_o = `EXE_RES_NOP;
+                            we_o = `WriteDisable;
+                            instvalid = `InstValid;	   
+                            reg1_read_o = `ReadDisable;
+                            reg2_read_o = `ReadEnable;
+                            cp0_sel_o = inst_i[2:0];
+                            cp0_addr_o = rd;
+                            is_cp0 = 1'b1;
+                        end
+                    end
+             
+                      default: ;
+                     endcase
+        
+                    if (inst_i == `EXE_ERET) begin
+		                  aluop_o = `EXE_ERET_OP;
+		                  alusel_o = `EXE_RES_NOP;
+		                  we_o = `WriteDisable;
+		                  reg1_read_o = `ReadDisable;
+                          reg2_read_o = `ReadDisable;
+                          instvalid = `InstValid;
+                          eret_exception = 1'b1;
+                          is_cp0 = 1'b1;
+		             end     
+                end
+  
+end
 
 // need to solve correlation problems      
 always@(*)  begin
         reg1_o = `ZeroWord;
+        reg1_load_dependency = `LoadIndependent;
     if(rst == `RstEnable)   begin
         reg1_o = `ZeroWord;    
-        
-     // solve the problem of data correlation(hazard)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+    // solve the problem of data correlation(hazard)       
+    end else if(reg1_read_o == `ReadEnable && is_load && ex_waddr1_i == reg1_raddr_o)  begin  
+        reg1_load_dependency = `LoadDependent;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
     end else if(reg1_read_o == `ReadEnable && ex_we2_i == `WriteEnable && ex_waddr2_i == reg1_raddr_o)  begin
         reg1_o = ex_wdata2_i;
     end else if(reg1_read_o == `ReadEnable && ex_we1_i == `WriteEnable && ex_waddr1_i == reg1_raddr_o) begin
@@ -690,10 +1035,12 @@ end
       
 always@(*)  begin
         reg2_o = `ZeroWord;
+        reg2_load_dependency = `LoadIndependent;
     if(rst == `RstEnable)   begin
         reg2_o = `ZeroWord;
-     
-      // solve the problem of data correlation   
+     // solve the problem of data correlation
+    end else if(reg2_read_o == `ReadEnable && is_load && ex_waddr1_i == reg2_raddr_o)  begin  
+        reg2_load_dependency = `LoadDependent;   
     end else if(reg2_read_o == `ReadEnable && ex_we2_i == `WriteEnable && ex_waddr2_i == reg2_raddr_o)  begin
         reg2_o = ex_wdata2_i;
     end else if(reg2_read_o == `ReadEnable && ex_we1_i == `WriteEnable && ex_waddr1_i == reg2_raddr_o) begin
@@ -712,6 +1059,6 @@ always@(*)  begin
         end
 end   
 
-assign imm_fnl = imm_ex;
+assign imm_fnl_o = imm_ex;
                 
 endmodule

@@ -42,7 +42,7 @@ module ex_top(
         
  
         input[`DoubleRegBus]    div_result_i,
-        input                                     div_ready_i,
+        input                   div_ready_i,
         
         input[`RegBus]                  hi_i,
         input[`RegBus]                  lo_i,
@@ -54,6 +54,28 @@ module ex_top(
         
         input                   is_in_delayslot1_i,
         input                   is_in_delayslot2_i,
+        
+        input                   LLbit_i,
+        input                   mem_LLbit_i,
+        input                   mem_LLbit_we_i,
+        input                   commit_LLbit_i,
+        input                   commit_LLbit_we_i,        
+        
+        input[2:0]               cp0_sel_i,
+    	input[`RegAddrBus]       cp0_addr_i,
+    	input[`RegBus]           cp0_data_i,
+    	input[2:0]               mem_cp0_wsel_i,
+    	input                    mem_cp0_we_i,
+    	input[`RegAddrBus]       mem_cp0_waddr_i,
+    	input[`RegBus]           mem_cp0_wdata_i,
+    	input[2:0]               commit_cp0_wsel_i,
+    	input                    commit_cp0_we_i,
+    	input[`RegAddrBus]       commit_cp0_waddr_i,
+    	input[`RegBus]           commit_cp0_wdata_i,
+    	
+    	input                    mem_exception_flag_i,
+    	input[31:0]              exception_type1_i,
+    	input[31:0]              exception_type2_i,
         
         
        output[`InstAddrBus]     inst1_addr_o,
@@ -67,8 +89,6 @@ module ex_top(
        output[`RegBus]              wdata1_o,
        output[`RegBus]              wdata2_o,
        
-       //output                               mul_req_o,
-//       output                               mul_s_o,
 
       output  reg[`RegBus]    hi_o,
       output  reg[`RegBus]    lo_o,
@@ -101,6 +121,19 @@ module ex_top(
       output[`RegBus]               mem_data_o,
       output                        mem_re_o,
       
+      output                        LLbit_o,
+      output                        LLbit_we_o,
+      
+	  output[2:0]                   cp0_rsel_o,
+      output[`RegAddrBus]           cp0_raddr_o,
+	  output[2:0]                   cp0_wsel_o,
+      output                        cp0_we_o,
+	  output[`RegAddrBus]           cp0_waddr_o,
+	  output[`RegBus]               cp0_wdata_o,
+	  output[31:0]                  exception_type1_o,
+	  output[31:0]                  exception_type2_o,
+      
+      
       output                                 stallreq               
             
     );
@@ -112,6 +145,7 @@ module ex_top(
     wire[`RegBus]   ex_sub_2_hi_o;
     wire[`RegBus]   ex_sub_2_lo_o;
     wire    ex_sub_2_whilo_o;
+    reg     LLbit;
     
     assign issue_mode = issue_i;
     assign is_in_delayslot1_o = is_in_delayslot1_i;
@@ -120,6 +154,16 @@ module ex_top(
     assign inst2_addr_o = inst2_addr_i;
     assign inst1_bpu_corr_o = inst1_bpu_corr_i;
     assign inst2_bpu_corr_o = inst2_bpu_corr_i;
+    assign cp0_rsel_o = cp0_sel_i;
+    assign cp0_wsel_o = cp0_sel_i;
+    
+    always @(*) begin
+        if(rst == `RstEnable) LLbit = 1'b0;
+        else if(mem_LLbit_we_i == `WriteEnable) LLbit = mem_LLbit_i;
+        else if(commit_LLbit_we_i == `WriteEnable) LLbit = commit_LLbit_i;
+        else LLbit = LLbit_i;
+    end    
+    
     
     ex  u_ex1(
             .rst(rst),
@@ -132,12 +176,24 @@ module ex_top(
             .we_i (we1_i), 
              .hi_i(hi_i),
              .lo_i(lo_i),       
-            .mul_ready_i(mul_ready_i),                  
-            .mul_i(mul_i),
             .div_result_i(div_result_i),            
             .div_ready_i(div_ready_i),
             .imm_i(imm_fnl1_i),
             .pc_i(inst1_addr_i),
+            .LLbit_i(LLbit),
+            .cp0_sel_i(cp0_sel_i),
+            .cp0_addr_i(cp0_addr_i),
+            .cp0_data_i(cp0_data_i),
+            .mem_cp0_wsel_i(mem_cp0_wsel_i),
+            .mem_cp0_we_i(mem_cp0_we_i),
+            .mem_cp0_waddr_i(mem_cp0_waddr_i),
+            .mem_cp0_wdata_i(mem_cp0_wdata_i),
+            .commit_cp0_wsel_i(commit_cp0_wsel_i),
+            .commit_cp0_we_i(commit_cp0_we_i),
+            .commit_cp0_waddr_i(commit_cp0_waddr_i),
+            .commit_cp0_wdata_i(commit_cp0_wdata_i),
+            .mem_exception_flag_i(mem_exception_flag_i),
+            .exception_type_i(exception_type1_i),
             
             .waddr_o(waddr1_o),                     
             . we_o(we1_o),         
@@ -149,6 +205,10 @@ module ex_top(
             .div_opdata2_o(div_opdata2_o),            
             .div_start_o(div_start_o),    
             .signed_div_o(signed_div_o),
+            .npc_actual(npc_actual),
+            .branch_flag_actual(branch_flag_actual),
+            .predict_flag(pred_flag),
+            .branch_info(branch_info),
                     
             .mem_addr_o(mem_addr_o),                                                
             .mem_raddr_o(mem_raddr_o),              
@@ -157,7 +217,14 @@ module ex_top(
             .mem_sel_o(mem_sel_o),                
             .mem_data_o(mem_data_o),               
             .mem_re_o(mem_re_o),                 
-                                      
+              
+            .LLbit_o(LLbit_o),
+            .LLbit_we_o(LLbit_we_o),
+            .cp0_raddr_o(cp0_raddr_o),
+            .cp0_we_o(cp0_we_o),
+            .cp0_waddr_o(cp0_waddr_o),
+            .cp0_wdata_o(cp0_wdata_o),
+            .exception_type_o(exception_type1_o),                          
             . stallreq(stallreq)                  
 
             );          
@@ -173,13 +240,14 @@ module ex_top(
             .we_i (we2_i), 
             .hi_i(hi_i),
             .lo_i(lo_i),
+            .exception_type_i(exception_type2_i),
             .waddr_o(waddr2_o),                     
             . we_o(we2_o),         
             .wdata_o(wdata2_o),                
             .hi_o(ex_sub_2_hi_o),                   
             .lo_o(ex_sub_2_lo_o),                   
-            .whilo_o(ex_sub_2_whilo_o)
-            
+            .whilo_o(ex_sub_2_whilo_o),
+            .exception_type_o(exception_type2_o)
     
     
     );             
@@ -189,7 +257,7 @@ module ex_top(
                 whilo_o = `WriteDisable;
                 hi_o = `ZeroWord;
                 lo_o = `ZeroWord;
-        end else if(ex_sub_2_whilo_o == `WriteEnable) begin
+        end else if(ex_sub_2_whilo_o == `WriteEnable) begin     //乘法指令双发优先保存第二条指令的结果？
                 whilo_o = `WriteEnable;
                 hi_o = ex_sub_2_hi_o;
                 lo_o = ex_sub_2_lo_o;

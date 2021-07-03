@@ -33,15 +33,29 @@ module ex(
         
         input[`RegBus]          hi_i,
         input[`RegBus]          lo_i,
-        
-        input                                     mul_ready_i,
-        input[`DoubleRegBus]    mul_i,
+
         input[`DoubleRegBus]    div_result_i,
         input                                    div_ready_i,
         
         input[`RegBus]                  imm_i,
         input[`InstAddrBus]             pc_i,
         input[`SIZE_OF_CORR_PACK]       inst_bpu_corr_i,
+        input                        LLbit_i,
+        
+        input[2:0]               cp0_sel_i,
+        input[`RegAddrBus]       cp0_addr_i,
+        input[`RegBus]           cp0_data_i,
+        input[2:0]               mem_cp0_wsel_i,
+        input                    mem_cp0_we_i,
+        input[`RegAddrBus]       mem_cp0_waddr_i,
+        input[`RegBus]           mem_cp0_wdata_i,
+        input[2:0]               commit_cp0_wsel_i,
+        input                    commit_cp0_we_i,
+        input[`RegAddrBus]       commit_cp0_waddr_i,
+        input[`RegBus]           commit_cp0_wdata_i,
+        
+        input                    mem_exception_flag_i,
+        input[31:0]              exception_type_i,
         
         output  reg[`RegAddrBus]     waddr_o,
         output  reg                                 we_o,
@@ -69,6 +83,16 @@ module ex(
         output  reg                               mem_data_o,
         output  reg                               mem_re_o,
         
+        output   reg                              LLbit_o,
+        output   reg                              LLbit_we_o,
+        
+        output  reg[`RegAddrBus]                cp0_raddr_o,
+        output  reg                             cp0_we_o,
+        output  reg[`RegAddrBus]                cp0_waddr_o,
+        output  reg[`RegBus]                    cp0_wdata_o,
+        
+        output[31:0]                            exception_type_o,
+        
         output                                       stallreq 
          
     );
@@ -81,20 +105,25 @@ module ex(
         reg[`RegBus]        arithmeticres;
         reg[`RegBus]        jbres;
         reg[`RegBus]        scres;
-        reg[`InstAddrBus]   jbaddr;
+     //   reg[`InstAddrBus]   jbaddr;
         
         wire[`DoubleRegBus]     mulres;
-        wire[`DoubleRegBus]     mulres_u;
+        wire[`DoubleRegBus]     mulres_u;  //无符号乘法结果
   
         
         wire    ov_sum;   //保存溢出情况 加法溢出
-        wire    sub;      //是否执行减法
+       // wire    sub;      //是否执行减法
         wire [`RegBus]   result_sum;
         
         reg stallreq_for_div;    
-        reg ovassert;
+        reg stallreq_for_mfc0;
+        
+        reg trapassert;  //自陷异常
+        reg ovassert;    //溢出异常
         reg mem_re;
         reg mem_we;
+        reg adel_exception;
+        reg ades_exception;
         
         wire[`InstAddrBus] pc_4;
         wire[`InstAddrBus] pc_8;
@@ -105,10 +134,13 @@ module ex(
      mult_gen_0 mul(.A(reg1_i),.B(reg2_i),.P(mulres));  //有符号乘法
      mult_gen_0_1 mul_u(.A(reg1_i),.B(reg2_i),.P(mulres_u));  //无符号乘法
         
-        assign stallreq = stallreq_for_div ; //⛵还有异常相关指令需要添加
+        assign stallreq = stallreq_for_div|stallreq_for_mfc0 ; //⛵还有异常相关指令需要添加
         assign mem_addr_o = reg1_i+imm_i;
-   always @(*) mem_re_o = mem_re;
-   always @(*) mem_we_o = mem_we;     
+        
+        assign exception_type_o = {exception_type_i[31:14],trapassert,ovassert,exception_type_i[11:6],ades_exception | exception_type_i[4],exception_type_i[3:0]};
+        
+   always @(*) mem_re_o = mem_re && ~|exception_type_o && mem_exception_flag_i == `ExceptionNotInduced;
+   always @(*) mem_we_o = mem_we && ~|exception_type_o && mem_exception_flag_i == `ExceptionNotInduced;     
         
         
    
@@ -227,7 +259,7 @@ always @(*) begin
     end else begin
         case (aluop_i)
             `EXE_SLT_OP, `EXE_SLTU_OP:begin      //�Ƚ�����
-                arithmeticres = reg1_lt_reg2;             // need to be fixed
+                arithmeticres = reg1_lt_reg2;             // need to be fixed?
             end           
             `EXE_ADD_OP, `EXE_ADDU_OP, `EXE_ADDI_OP, `EXE_ADDIU_OP, `EXE_SUB_OP, `EXE_SUBU_OP:begin  //�ӷ�����
                 arithmeticres = result_sum;
@@ -275,6 +307,43 @@ always @(*) begin
         endcase     //end case aluop_i
     end
 end
+
+         
+            
+always @(*) begin
+    if(rst == `RstEnable)begin
+        trapassert = `TrapNotAssert;
+    end else begin
+        trapassert = `TrapNotAssert;
+        case (aluop_i)
+            `EXE_TEQ_OP,`EXE_TEQI_OP:begin
+                if(reg1_i == reg2_i )begin
+                    trapassert = `TrapAssert;
+                end
+            end
+            `EXE_TGE_OP,`EXE_TGEI_OP,`EXE_TGEIU_OP,`EXE_TGEU_OP:begin
+                if (~reg1_lt_reg2)begin
+                    trapassert = `TrapAssert;
+                end
+            end
+            `EXE_TLT_OP,`EXE_TLTI_OP,`EXE_TLTIU_OP,`EXE_TLTU_OP:begin
+                if(reg1_lt_reg2)begin
+                    trapassert = `TrapAssert;
+                end
+            end
+            `EXE_TNE_OP,`EXE_TNEI_OP:begin
+                if(reg2_i != reg1_i)begin
+                    trapassert = `TrapAssert;
+                end
+            end
+            default:begin
+                trapassert = `TrapNotAssert;
+            end 
+        endcase
+    end
+end            
+            
+            
         
 
 always @(*) begin

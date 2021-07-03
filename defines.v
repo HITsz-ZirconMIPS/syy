@@ -148,6 +148,7 @@
 `define EXE_SC 6'b111000
 
 `define EXE_SYSCALL 6'b001100
+`define EXE_BREAK   6'b001101 
    
 `define EXE_TEQ 6'b110100
 `define EXE_TEQI 5'b01100
@@ -163,6 +164,8 @@
 `define EXE_TNEI 5'b01110
    
 `define EXE_ERET 32'b01000010000000000000000000011000
+
+`define EXE_COP0 6'b010000
 
 //AluOp
 `define EXE_AND_OP   8'b00100100
@@ -250,6 +253,7 @@
 `define EXE_NOP_OP    8'b00000000
 
 `define EXE_SYSCALL_OP 8'b00001100
+`define EXE_BREAK_OP   8'b00001101 
 
 `define EXE_TEQ_OP 8'b00110100
 `define EXE_TEQI_OP 8'b01001000
@@ -265,6 +269,8 @@
 `define EXE_TNEI_OP 8'b01001001
    
 `define EXE_ERET_OP 8'b01101011
+
+
 
 //AluSel
 `define EXE_RES_LOGIC 3'b001
@@ -314,10 +320,25 @@
 `define DivStop 1'b0
 
 //CP0�Ĵ�����ַ
-`define CP0_REG_COUNT    5'b01001        //�ɶ�д
-`define CP0_REG_COMPARE    5'b01011      //�ɶ�д
-`define CP0_REG_STATUS    5'b01100       //�ɶ�д
-`define CP0_REG_CAUSE    5'b01101        //ֻ��
-`define CP0_REG_EPC    5'b01110          //�ɶ�д
-`define CP0_REG_PRId    5'b01111         //ֻ��
-`define CP0_REG_CONFIG    5'b10000       //ֻ��
+`define CP0_REG_COUNT    5'b01001        //可读写
+`define CP0_REG_COMPARE    5'b01011      //可读写
+`define CP0_REG_STATUS    5'b01100       //🉑可读写
+`define CP0_REG_CAUSE    5'b01101        //ֻ只读
+`define CP0_REG_EPC    5'b01110          //可读写
+`define CP0_REG_PrId    5'b01111         //ֻ只读
+`define CP0_REG_CONFIG    5'b10000       //ֻ只读
+`define CPO_REG_BADVADDR  5'b01000      //只读
+`define CP0_REG_EBase     5'b01111      //可读写
+
+`define EXCEPTION_INT   5'h00
+`define EXCEPTION_ADEL  5'h04
+`define EXCEPTION_ADES  5'h05
+`define EXCEPTION_SYS  5'h08
+`define EXCEPTION_BP  5'h09
+`define EXCEPTION_RI  5'h0a
+`define EXCEPTION_OV  5'h0c
+`define EXCEPTION_TR  5'h0d
+`define EXCEPTION_ERET  5'h0e
+
+//异常入口地址
+`define VECTOR_EXCEPTION   32'hBFC00380 
